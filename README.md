@@ -1,85 +1,187 @@
-# Proyecto MDW 2026 — <NOMBRE DEL SISTEMA>
+# CareRoute
 
-> Reemplazá este bloque en la clase 1.
+> Plataforma de coordinación inter-hospitalaria y triaje de traslados críticos.
 
 **Equipo:**
 
-- Nombre Apellido — responsable del repositorio (creó el repo y tiene la cuenta de Vercel)
-- Nombre Apellido
-- Nombre Apellido
-- Nombre Apellido
+Mateo Dip — responsable del repositorio (creó el repo y tiene la cuenta de Vercel)
+Nicolas Censi
+Mateo Duran
 
-**Producción:** https://<tu-proyecto>.vercel.app
-**Problema que resuelve:** una oración.
-**Flujo principal:** una oración.
+**Materia:** Metodologías y Desarrollos Web
+**URL de producción:** 
 
 ---
 
-## Puesta en marcha
+## 1. Descripción
 
-Requisitos: Node 20+, npm, y una base de datos: **Postgres** (Supabase) o **MongoDB** (Atlas). Las dos tienen plan gratuito.
+La derivación de pacientes críticos entre centros de salud y hospitales de cabecera se resuelve
+hoy con llamadas telefónicas no centralizadas. Eso produce pérdida de tiempo vital para
+localizar camas de terapia (UTI/UCO), falta de visibilidad sobre el equipamiento especializado
+disponible y ausencia de trazabilidad del paciente durante el traslado.
 
-```bash
-npm install
-cp .env.example .env.local     # completar DATABASE_URL y AUTH_SECRET
-npx prisma migrate dev --name init
-npm run db:seed
-npm run dev                       # http://localhost:3000
-```
+**CareRoute** centraliza ese proceso en una sola herramienta web:
 
-Generar el `AUTH_SECRET`:
+- Visibilidad en tiempo real de camas y recursos disponibles por hospital.
+- Asignación asistida por un **triaje inteligente** (IA) que sugiere nivel de urgencia y un
+  ranking de hospitales candidatos.
+- Trazabilidad de la derivación durante todo el traslado.
 
-```bash
-npx auth secret
-```
+> **Importante:** la IA es un apoyo a la decisión, no un diagnóstico médico. Toda sugerencia
+> debe ser revisada y confirmada por un profesional. El sistema nunca ejecuta una derivación
+> de forma automática.
 
-> Usen **npm** en todo el equipo y commiteen el `package-lock.json`. Si alguien instala con otro gestor aparece un segundo lockfile y las instalaciones dejan de ser reproducibles.
+## 2. Equipo y roles
 
-## Comandos
+### 2.1 Roles del equipo de desarrollo
 
-| Comando | Para qué |
+| Integrante | GitHub | Rol |
+|---|---|---|
+| `<Nombre>` | [@`<usuario>`](https://github.com/MateoDip) 
+| `<Nombre>` | [@`<usuario>`](https://github.com/Nicolas-Censi)
+| `<Nombre>` | [@`<usuario>`](https://github.com/mduranclem)
+### 2.2 Roles de usuario dentro del sistema
+
+| Rol | Qué hace |
 |---|---|
-| `npm run dev` | Levantar en desarrollo |
-| `npm run build` | Build de producción (lo mismo que corre Vercel) |
-| `npm run lint` | Lint |
-| `npm run typecheck` | Chequeo de tipos sin emitir |
-| `npm test` | Tests |
-| `npx prisma migrate dev` | Crear y aplicar una migración |
-| `npx prisma studio` | Ver y editar los datos a mano |
-| `npm run db:seed` | Cargar datos de ejemplo |
+| **Médico del centro derivante** | Carga los datos del paciente, recibe la sugerencia de urgencia, revisa el ranking de hospitales y confirma la derivación. |
+| **Coordinador del hospital receptor** | Mantiene actualizada la disponibilidad de camas (UTI/UCO) y equipamiento, y recibe la notificación cuando le asignan un traslado. |
+| **Personal de traslado** | Actualiza y consulta el estado de la derivación durante el trayecto. |
 
-## Estructura
+## 3. Flujo principal
 
 ```
-app/                    rutas (App Router)
-  (public)/             páginas sin sesión
-  (app)/                páginas con sesión
-  api/                  Route Handlers
-components/             componentes de UI
-lib/
-  db/                   acceso a datos — ÚNICO lugar que habla con Prisma
-  schemas/              schemas de Zod (validación + tipos)
-  auth.ts               configuración de sesión y roles
-prisma/
-  schema.prisma         modelo de datos
-  seed.ts               datos de ejemplo
-docs/
-  spec.md               qué hace el sistema (requerimientos)
-  adr/                  decisiones técnicas y por qué
+1. Login  →  el usuario queda asociado a su hospital / centro de salud
+
+2. Carga del paciente          (HU01)
+   síntomas en texto libre + signos vitales + equipamiento requerido
+
+3. Sugerencia de urgencia IA   (HU02)
+   nivel sugerido (bajo | medio | alto | crítico) + justificación breve
+   el médico acepta o corrige el nivel
+
+4. Ranking de hospitales       (HU03)
+   scoring = disponibilidad de cama + distancia + match de equipamiento
+   solo hospitales con al menos una cama libre del tipo requerido
+
+5. Confirmación manual         (HU04)
+   el médico elige el destino → se crea la Derivación con fecha y hora
+
+6. Notificación al receptor    (HU06)
+   el coordinador prepara cama y equipamiento
+
+7. Seguimiento del traslado    (HU07)
+   estado: en curso → finalizado, con registro de fecha y hora
 ```
 
-## Reglas del equipo
+### Historias de usuario
 
-- Nadie pushea a `main`. Todo entra por Pull Request con al menos 1 aprobación.
-- Las convenciones de código están en [`AGENTS.md`](./AGENTS.md) — mantenerlo al día es responsabilidad del equipo.
-- Una decisión técnica que cueste revertir se documenta como ADR en `docs/adr/`.
+| ID | Historia |
+|---|---|
+| HU01 | Crear una derivación con datos del paciente y centro de origen |
+| HU02 | Recibir sugerencia de urgencia por IA |
+| HU03 | Ver ranking de hospitales recomendados |
+| HU04 | Confirmar la derivación |
+| HU05 | Actualizar disponibilidad del hospital |
+| HU06 | Recibir notificación de traslado asignado |
+| HU07 | Seguir el estado de la derivación durante el traslado |
 
-## Definition of Done
+## 4. Modelo de datos
 
-Una tarea está terminada cuando:
+```mermaid
+erDiagram
+    HOSPITAL ||--o{ USUARIO : "emplea"
+    HOSPITAL ||--o{ DERIVACION : "es origen de"
+    HOSPITAL ||--o{ DERIVACION : "es destino de"
+    PACIENTE ||--o{ DERIVACION : "genera"
 
-- [ ] Funciona en el preview deployment, no solo en la máquina de quien la escribió.
-- [ ] La validación está en el servidor, no solo en el cliente.
-- [ ] Los estados de carga y error están resueltos en la UI.
-- [ ] `npm run build` y `npm run typecheck` pasan.
-- [ ] Alguien más del equipo la revisó y puede explicarla.
+    HOSPITAL {
+        int id
+        string nombre
+        string ubicacion
+        int camas_uti_disponibles
+        int camas_uco_disponibles
+        string equipamiento_disponible
+    }
+    USUARIO {
+        int id
+        string nombre
+        string rol
+        int id_hospital
+    }
+    PACIENTE {
+        int id
+        string nombre
+        string sintomas
+        string signos_vitales
+        string nivel_urgencia_sugerido
+        string nivel_urgencia_confirmado
+    }
+    DERIVACION {
+        int id
+        int id_paciente
+        int id_hospital_origen
+        int id_hospital_destino
+        string nivel_urgencia
+        string estado
+        datetime fecha_hora_inicio
+        datetime fecha_hora_fin
+    }
+```
+
+## 5. Stack tecnológico
+
+| Capa | Tecnología |
+|---|---|
+| Framework | Next.js (App Router) + React |
+| Lenguaje | TypeScript (`strict: true`, prohibido `any`) |
+| Estilos | Tailwind CSS |
+| Validación | Zod (única librería de validación permitida) |
+| Base de datos | PostgreSQL en Supabase (región São Paulo · `sa-east-1`) |
+| Auth | Supabase Auth |
+| IA | API de modelo de lenguaje para interpretar la descripción clínica |
+| Deploy | Vercel |
+| Control de versiones | GitHub — `main` protegida, cambios vía Pull Request |
+
+## 6. Puesta en marcha local
+
+Requisitos: Node.js 20 o superior y npm.
+
+```bash
+git clone https://github.com/MateoDip/CareRoute.git
+cd CareRoute
+npm install
+cp .env.local.example .env.local   # completar con las credenciales de Supabase
+npm run dev
+```
+
+La app queda en http://localhost:3000
+
+### Variables de entorno
+
+Se cargan en `.env.local`, que **no se commitea** (está en `.gitignore`).
+
+| Variable | De dónde sale |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (solo servidor, nunca en el cliente) |
+| `DATABASE_URL` | Supabase → Connect → Transaction pooler (puerto 6543) |
+| `DIRECT_URL` | Supabase → Connect → Direct connection (puerto 5432), para migraciones |
+| `AI_API_KEY` | Panel del proveedor del modelo de lenguaje |
+
+## 7. Flujo de trabajo con Git
+
+- `main` está protegida: no se aceptan push directos ni force push.
+- Todo cambio entra por Pull Request con **al menos una aprobación de otra persona**.
+- Nadie aprueba su propio trabajo.
+- Nombres de rama: `feat/<descripcion>`, `fix/<descripcion>`, `docs/<descripcion>`.
+- Commits en formato Conventional Commits: `feat: ranking de hospitales por scoring`.
+
+Si vas a usar asistentes de IA para escribir código, leé primero [AGENTS.md](./AGENTS.md).
+
+## 8. Requisitos no funcionales
+
+- **RNF01** — la sugerencia de triaje debe responder en pocos segundos (objetivo: < 10 s).
+- **RNF02** — interfaz responsive: se usa desde el celular en el momento de la emergencia.
+- **RNF03** — los datos del paciente se manejan de forma segura y confidencial.
