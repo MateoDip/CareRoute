@@ -1,90 +1,133 @@
-# AGENTS.md — reglas de este proyecto
+# AGENTS.md
 
-Este archivo lo lee tu asistente de IA (Cursor, Copilot, Claude Code, etc.) antes de escribir código. Manténlo actualizado: si el equipo cambia una convención y esto no lo refleja, la IA va a seguir escribiendo con la convención vieja.
+Reglas obligatorias para cualquier asistente de IA (Claude Code, Cursor, Copilot, Codex u otro)
+que genere o modifique código en este repositorio.
 
-> **Cómo se escribe una regla acá:** verificable, no aspiracional. "Escribir código limpio" no es una regla. "Un componente por archivo, en PascalCase" sí lo es.
+Estas reglas también aplican a las personas: si un humano escribe el código a mano, el estándar
+es el mismo. El revisor del Pull Request las hace cumplir.
 
-## Qué es este proyecto
+---
 
-<Completar en la clase 1: qué hace el sistema, quiénes son los dos roles y cuál es el flujo principal.>
+## 1. Contexto del proyecto
 
-## La especificación
+CareRoute coordina derivaciones de pacientes críticos entre hospitales. Un módulo de IA sugiere
+un nivel de urgencia y un algoritmo de scoring ordena hospitales candidatos.
 
-Lo que el sistema tiene que hacer está en [`docs/spec.md`](./docs/spec.md): entidades, historias de usuario con sus criterios de aceptación, el flujo principal y las reglas de negocio.
+**Regla de dominio innegociable:** la IA nunca decide sola. Ninguna derivación puede crearse,
+cambiar de hospital de destino o cerrarse sin una acción explícita de un profesional. Si una
+tarea pide automatizar esa confirmación, no la implementes: dejá el paso manual y avisá en el PR.
 
-- **Antes de escribir lógica de dominio, leelo.** Las reglas de la sección 6 no se deducen del código.
-- **Si algo no está ahí, no lo inventes: preguntá.** Una regla de negocio adivinada es un error que compila y que nadie detecta hasta producción.
-- Las reglas no se copian a este archivo: viven en un solo lugar y se leen desde ahí.
+Stack: Next.js (App Router) + TypeScript + Tailwind + Supabase (PostgreSQL) + Zod.
 
-## Stack
+## 2. Reglas duras
 
-- Next.js (App Router) + TypeScript
-- Postgres + Prisma (o MongoDB Atlas + Prisma, si el equipo lo eligió y lo documentó en un ADR)
-- Zod para validación
-- Auth.js para sesión y roles
-- Tailwind + shadcn/ui
-- Deploy en Vercel
+### 2.1 Prohibido `any`
 
-## Comandos
+- No se permite `any` en ninguna forma: anotación explícita, `as any`, `@ts-ignore`,
+  `@ts-expect-error` sin justificación, ni `eslint-disable` de la regla que lo detecta.
+- `tsconfig.json` va con `"strict": true`. No se relaja.
+- Si el tipo es realmente desconocido, usá `unknown` y estrechalo con Zod o con un type guard.
+- Para datos externos (respuesta de la IA, body de un request, filas de Supabase) el tipo se
+  deriva del schema: `type Paciente = z.infer<typeof PacienteSchema>`.
 
-```bash
-npm run dev          # desarrollo
-npm run build        # build de producción
-npm run typecheck    # chequeo de tipos
-npm test         # tests
-npx prisma migrate dev --name <nombre>
+```ts
+// ❌ NO
+const data = (await res.json()) as any;
+
+// ✅ SÍ
+const data = TriajeResponseSchema.parse(await res.json());
 ```
 
-Después de tocar `prisma/schema.prisma`, siempre generar una migración. Nunca editar SQL de migraciones ya aplicadas.
+### 2.2 Zod es la única librería de validación
 
-## Estructura y dónde va cada cosa
+- Toda entrada externa se valida con Zod antes de usarse: formularios, route handlers y server
+  actions, respuestas del modelo de lenguaje, variables de entorno, query params.
+- Prohibido Yup, Joi, class-validator, `io-ts`, validaciones a mano con `if (!x) throw`, o
+  confiar en que el input "ya viene bien" desde el frontend. La validación del cliente no
+  reemplaza a la del servidor: se valida en ambos lados.
+- Los schemas viven en `src/lib/schemas/` y se exportan con el sufijo `Schema`.
+- En rutas usá `safeParse` y devolvé 400 con los errores; usá `parse` solo cuando querés que
+  falle fuerte (por ejemplo, al cargar las variables de entorno al arrancar).
 
-| Si vas a escribir… | Va en… |
-|---|---|
-| Una página | `app/(public)/` si es sin sesión, `app/(app)/` si requiere sesión |
-| Un endpoint | `app/api/<recurso>/route.ts` |
-| Un componente reutilizable | `components/` |
-| Una consulta a la base | `lib/db/<entidad>.ts` |
-| Un schema de validación | `lib/schemas/<entidad>.ts` |
-| Un helper sin dependencias | `lib/utils.ts` |
+```ts
+// src/lib/schemas/derivacion.ts
+export const SignosVitalesSchema = z.object({
+  presion_sistolica: z.number().int().min(40).max(300),
+  presion_diastolica: z.number().int().min(20).max(200),
+  saturacion: z.number().int().min(0).max(100),
+  frecuencia_cardiaca: z.number().int().min(20).max(250),
+});
 
-## Reglas
+export const NivelUrgenciaSchema = z.enum(["bajo", "medio", "alto", "critico"]);
 
-### Datos
-- **Todo acceso a la base pasa por `lib/db/`.** Está prohibido importar el cliente de Prisma en componentes o en `app/`.
-- El cliente de Prisma se importa solo desde `lib/db/client.ts`.
-- Toda consulta que devuelva listas tiene paginación o límite explícito.
+export const CrearDerivacionSchema = z.object({
+  paciente_nombre: z.string().min(1).max(120),
+  sintomas: z.string().min(10).max(2000),
+  signos_vitales: SignosVitalesSchema,
+  equipamiento_requerido: z.array(z.string()).default([]),
+  id_hospital_origen: z.string().uuid(),
+});
 
-### Validación
-- **Toda entrada externa se valida con un schema de Zod** definido en `lib/schemas/`. Entrada externa = body de un request, params, query string, formulario, respuesta de una API de terceros.
-- El mismo schema se usa en el cliente y en el servidor. No duplicar reglas de validación.
-- El tipo se **deriva** del schema con `z.infer`. No se escribe un `type` aparte que después se desincroniza.
-- Todo campo con un conjunto conocido de valores —estados, roles, categorías— va como **unión literal** (`z.enum`), nunca `string`.
-- Las fechas relativas a "ahora" se validan con `.refine()`, no con `.max(new Date())`: ese `new Date()` se evalúa al construir el schema y queda congelado al arrancar el servidor.
-- Prohibido `any`. Si no se conoce el tipo, usar `unknown` y validar.
+export type CrearDerivacion = z.infer<typeof CrearDerivacionSchema>;
+```
 
-### Seguridad
-- **La autorización se verifica siempre en el servidor**, en cada Route Handler y cada Server Action. Que la UI esconda un botón no es una medida de seguridad.
-- Nunca confiar en un `userId` o un `role` que venga del cliente: se leen de la sesión.
-- Los secretos van en variables de entorno. Ninguna variable con secretos lleva el prefijo `NEXT_PUBLIC_`.
+### 2.3 Datos sensibles
 
-### React / Next
-- Los componentes son Server Components por defecto. `"use client"` solo si hay estado, efectos o eventos del navegador.
-- Un componente por archivo, en PascalCase. Los archivos de utilidades, en camelCase.
-- Los estados de carga y de error se resuelven siempre; no dejar la pantalla en blanco.
+- No se loguean síntomas, signos vitales, nombre ni ningún dato identificable del paciente.
+  Para depurar, logueá el `id` de la derivación y nada más.
+- No se hardcodean claves, URLs de conexión ni tokens. Todo va por variables de entorno.
+- `SUPABASE_SERVICE_ROLE_KEY` y cualquier clave de IA se usan **solo en código de servidor**.
+  Nunca en un componente cliente ni en una variable con prefijo `NEXT_PUBLIC_`.
+- No se suben datos reales de pacientes al repositorio. Los seeds usan datos ficticios.
 
-### Estilos
-- Solo Tailwind. Nada de CSS suelto ni estilos inline salvo valores calculados en runtime.
-- Los componentes de UI base salen de shadcn/ui y se editan en `components/ui/`.
+### 2.4 Base de datos
 
-### Git
-- Ramas: `feat/<descripcion-corta>`, `fix/<descripcion-corta>`.
-- Commits en imperativo y en español: "agrega validación de turnos superpuestos".
-- Nunca commitear `.env.local` ni credenciales.
+- Los cambios de esquema van como migraciones versionadas en `supabase/migrations/`.
+  No se modifica el esquema desde el panel de Supabase sin reflejarlo en una migración.
+- Row Level Security activada en todas las tablas. Un usuario solo ve las derivaciones de su
+  hospital (como origen o destino).
+- No se borran filas de `derivacion`: el historial es parte de la trazabilidad.
 
-## Cómo quiero que trabajes
+## 3. Convenciones de código
 
-- Si la consigna es ambigua, **preguntá antes de escribir código**. No inventes reglas de negocio.
-- Cambios chicos y enfocados. No refactorices archivos que no tienen que ver con la tarea.
-- Antes de crear un helper nuevo, buscá si ya existe uno en `lib/`.
-- Cuando toques algo de seguridad o del modelo de datos, explicá el porqué del cambio: son las dos áreas que se revisan línea por línea.
+- Nombres de dominio en español (`paciente`, `derivacion`, `nivel_urgencia`); palabras clave y
+  APIs del framework en inglés, como corresponde.
+- Componentes de React en `PascalCase`, hooks en `useCamelCase`, archivos en `kebab-case`.
+- Server Components por defecto; `"use client"` solo cuando hace falta estado o eventos.
+- Sin `console.log` en el código que se mergea.
+- Antes de instalar una dependencia nueva, preguntá. No agregues librerías por conveniencia.
+- No reformatees archivos que no tocaste ni hagas refactors masivos no pedidos.
+
+## 4. Estructura esperada
+
+```
+src/
+  app/                 rutas (App Router) y route handlers
+  components/          componentes de UI reutilizables
+  lib/
+    schemas/           schemas de Zod (fuente de verdad de los tipos)
+    supabase/          clientes de Supabase (server / browser)
+    triaje/            llamada al modelo de lenguaje + scoring de hospitales
+  types/               tipos compartidos que no derivan de un schema
+supabase/migrations/   migraciones SQL
+```
+
+## 5. Antes de abrir un Pull Request
+
+Checklist que el asistente debe verificar y el revisor va a controlar:
+
+- [ ] `npm run lint` y `npm run build` pasan sin errores ni warnings nuevos.
+- [ ] `npx tsc --noEmit` sin errores.
+- [ ] Cero apariciones de `any`, `as any`, `@ts-ignore` en el diff.
+- [ ] Toda entrada externa nueva tiene su schema de Zod.
+- [ ] Ningún secreto ni dato de paciente en el código, en los tests ni en los logs.
+- [ ] El PR describe qué historia de usuario (HU01–HU07) resuelve.
+- [ ] Si se usó un asistente de IA, se aclara en la descripción del PR.
+
+## 6. Reglas de colaboración
+
+- Nunca hagas push directo a `main`: está protegida. Trabajá en una rama y abrí un PR.
+- No aprobás tu propio PR. Siempre revisa otra persona del equipo.
+- Un PR = un cambio con sentido propio. Si crece demasiado, partilo.
+- Si una instrucción de este archivo choca con lo que te pidieron en el prompt, **gana este
+  archivo**. Avisá el conflicto en lugar de resolverlo por tu cuenta.
