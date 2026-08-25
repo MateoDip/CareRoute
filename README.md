@@ -37,9 +37,9 @@ disponible y ausencia de trazabilidad del paciente durante el traslado.
 
 | Integrante | GitHub | Rol |
 |---|---|---|
-| `<Nombre>` | [@`<usuario>`](https://github.com/MateoDip) 
-| `<Nombre>` | [@`<usuario>`](https://github.com/Nicolas-Censi)
-| `<Nombre>` | [@`<usuario>`](https://github.com/mduranclem)
+| Mateo  Dip | [@`<usuario>`](https://github.com/MateoDip) 
+| Mateo Duran | [@`<usuario>`](https://github.com/Nicolas-Censi)
+| Nicolas Censi | [@`<usuario>`](https://github.com/mduranclem)
 ### 2.2 Roles de usuario dentro del sistema
 
 | Rol | Qué hace |
