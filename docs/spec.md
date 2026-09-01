@@ -23,12 +23,39 @@ Los sustantivos que aparecen en las historias de usuario. De acá sale el modelo
 
 | Entidad | Qué representa | Se relaciona con |
 |---|---|---|
-| | | |
+| **CentroSalud** | Establecimiento médico con su nivel de complejidad y ubicación geográfica. | UnidadCuidados, Usuario, SolicitudTraslado |
+| **UnidadCuidados** | Áreas de internación específicas (UTI, UCO) y su inventario de camas. | CentroSalud |
+| **RecursoEspecializado** | Equipamiento médico puntual (ej. respiradores) y su estado operativo. | CentroSalud |
+| **SolicitudTraslado** | La derivación central que vincula al centro emisor con el receptor y gestiona su estado. | CentroSalud, Paciente, EvaluacionTriaje |
+| **EvaluacionTriaje** | Registro de signos vitales, scores clínicos (ej. GCS) y el nivel de prioridad asignado. | SolicitudTraslado, Paciente |
+| **TripulacionMedica** | La unidad de transporte física y el personal paramédico asignado al viaje. | SolicitudTraslado |
+| **RegistroBitacora** | Trazabilidad, notas y eventos clínicos cronológicos durante el trayecto físico. | SolicitudTraslado, TripulacionMedica |
 
 ## 4. Historias de usuario
 
 Formato: **Como** <rol>, **quiero** <acción>, **para** <beneficio>.
 Cada historia lleva su criterio de aceptación: cómo se verifica que está terminada.
+
+### H1 — Iniciar solicitud de derivación
+**Como** médico del centro emisor, **quiero** registrar los datos de filiación y signos vitales del paciente, **para** iniciar el proceso de derivación con la información clínica completa.
+
+Criterios de aceptación:
+- [x] Dado que el médico ingresa los datos requeridos en el formulario de triaje, cuando lo envía, entonces el sistema genera una `SolicitudTraslado` vinculada a su `CentroSalud` de origen.
+- [x] Caso de error: cuando el médico intenta avanzar sin completar un campo obligatorio (ej. presión arterial), el sistema bloquea la acción, señala visualmente el campo faltante y mantiene la información ya cargada.
+
+### H2 — Sugerencia de urgencia por IA
+**Como** médico del centro derivante, **quiero** que el sistema sugiera un nivel de urgencia basado en los parámetros clínicos, **para** tomar una decisión de derivación más rápida y fundamentada.
+
+Criterios de aceptación:
+- [x] Dado que el médico completó la `EvaluacionTriaje`, cuando el sistema procesa los signos vitales, entonces se despliega en pantalla un nivel de urgencia sugerido (Bajo, Medio, Alto, Crítico) en menos de 10 segundos.
+- [x] Caso de error: cuando el servicio de IA falla o demora más de 10 segundos, el sistema permite al médico seleccionar el nivel de urgencia manualmente advirtiendo sobre la falta de conexión.
+
+### H3 — Confirmar derivación al hospital receptor
+**Como** médico del centro derivante, **quiero** confirmar manualmente el hospital de destino desde el ranking de recomendaciones, **para** asegurar que la decisión final la tome un profesional basándose en la disponibilidad real.
+
+Criterios de aceptación:
+- [x] Dado que el médico visualiza el ranking de hospitales aptos, cuando selecciona un `CentroSalud` de destino y confirma, entonces la `SolicitudTraslado` cambia a estado "Aprobada" y se registra la fecha y hora de la decisión.
+- [x] Caso de error: cuando la `UnidadCuidados` del destino se queda sin camas disponibles en el instante exacto de la confirmación, el sistema cancela la asignación, muestra una alerta de "Capacidad agotada" y recarga el ranking actualizado.
 
 ### H1 — <título>
 **Como** …, **quiero** …, **para** …
