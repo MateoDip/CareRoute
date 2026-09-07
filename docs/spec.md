@@ -31,6 +31,25 @@ Los sustantivos que aparecen en las historias de usuario. De acá sale el modelo
 | **TripulacionMedica** | La unidad de transporte física y el personal paramédico asignado al viaje. | SolicitudTraslado |
 | **RegistroBitacora** | Trazabilidad, notas y eventos clínicos cronológicos durante el trayecto físico. | SolicitudTraslado, TripulacionMedica |
 
+### Relaciones y Reglas de Borrado (Actualización Clase 3)
+
+*   **Usuario**
+    *   **Relación:** Pertenece a 1 `CentroSalud` (N a 1).
+    *   **Regla de borrado:** `Restrict`. No se puede dar de baja un centro de salud si todavía tiene usuarios médicos vinculados a él.
+*   **CentroSalud**
+    *   **Relaciones:** Tiene N `UnidadesCuidados`, N `RecursosEspecializados` y N `SolicitudesTraslado` (1 a N).
+    *   **Reglas de borrado:**
+        *   Hacia Unidades y Recursos: `Cascade`. Si un centro se da de baja del sistema, su inventario físico (camas y equipos) se destruye con él.
+        *   Hacia Solicitudes (Origen/Destino): `Restrict`. El historial de derivaciones de un centro es inmutable y no se puede borrar en cascada.
+*   **SolicitudTraslado**
+    *   **Relaciones:** Tiene 1 `EvaluacionTriaje` (1 a 1), N `TripulacionesMedicas` y N `RegistrosBitacora` (1 a N).
+    *   **Reglas de borrado:**
+        *   Hacia Evaluación Triaje: `Cascade`. Si la solicitud se cancela y elimina antes de procesarse, sus signos vitales sugeridos pierden sentido.
+        *   Hacia Tripulación y Bitácora: `Restrict`. Nunca se puede borrar en cascada el historial de eventos, complicaciones clínicas ni los viajes realizados.
+*   **RegistroBitacora**
+    *   **Relaciones:** Pertenece a 1 `SolicitudTraslado` y 1 `TripulacionMedica` (N a 1).
+    *   **Regla de borrado:** `Restrict`. Actúa como un log de auditoría intocable. No se borra nunca.
+
 ## 4. Historias de usuario
 
 Formato: **Como** <rol>, **quiero** <acción>, **para** <beneficio>.
