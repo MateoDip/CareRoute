@@ -40,6 +40,7 @@ disponible y ausencia de trazabilidad del paciente durante el traslado.
 | Mateo  Dip | [@`MateoDip`](https://github.com/MateoDip) 
 | Mateo Duran | [@`mduranclem`](https://github.com/mduranclem)
 | Nicolas Censi | [@`Nicolas-Censi`](https://github.com/Nicolas-Censi)
+| Fernando Almansa | [@`Fernando Almansa`](https://github.com/FernandoAlmansa)
 ### 2.2 Roles de usuario dentro del sistema
 
 | Rol | Qué hace |
