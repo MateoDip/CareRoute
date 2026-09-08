@@ -1,61 +1,188 @@
-// Modelo de datos del proyecto.
-//
-// Lo que hay acá abajo es un EJEMPLO MÍNIMO para que el proyecto arranque.
-// En la clase 3 lo reemplazan por el modelo de su propio dominio.
-//
-// Después de cualquier cambio en este archivo:
-//   npx prisma migrate dev --name <descripcion-del-cambio>
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-
-  // Vercel es serverless, así que hacen falta dos conexiones distintas:
-  //   DATABASE_URL → el pooler, que la app usa en cada request
-  //   DIRECT_URL   → la conexión directa, que usan las migraciones
-  // Con una sola funciona en clase y se cae en producción por agotar
-  // las conexiones de Postgres.
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-// ¿El equipo eligió MongoDB? Se cambia el provider a "mongodb", se usa una
-// connection string de MongoDB Atlas y se sincroniza con `prisma db push`
-// en lugar de `prisma migrate dev`. El resto del proyecto no cambia.
-// Ojo: con Mongo los ids llevan @map("_id") @db.ObjectId y la integridad
-// referencial la garantiza el código, no la base.
+// ==========================================
+// ENUMS (Listas cerradas de valores)
+// ==========================================
 
-enum Rol {
+enum RolUsuario {
   ADMIN
-  USUARIO
+  MEDICO_DERIVANTE
+  MEDICO_RECEPTOR
 }
+
+enum NivelComplejidad {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+enum TipoUnidad {
+  UTI
+  UCO
+  SALA_COMUN
+  GUARDIA
+}
+
+enum TipoRecurso {
+  RESPIRADOR
+  MONITOR_MULTIPARAMETRICO
+  DESFIBRILADOR
+  BOMBA_INFUSION
+}
+
+enum EstadoRecurso {
+  OPERATIVO
+  EN_MANTENIMIENTO
+  FUERA_DE_SERVICIO
+}
+
+enum EstadoSolicitud {
+  PENDIENTE
+  EVALUANDO
+  APROBADA
+  RECHAZADA
+  EN_CURSO
+  FINALIZADA
+}
+
+enum NivelUrgencia {
+  BAJO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
+enum EstadoTripulacion {
+  EN_BASE
+  EN_TRANSITO_ORIGEN
+  EN_TRANSITO_DESTINO
+  REGRESANDO
+}
+
+enum EventoBitacora {
+  SALIDA_BASE
+  LLEGADA_ORIGEN
+  PACIENTE_A_BORDO
+  LLEGADA_DESTINO
+  COMPLICACION_CLINICA
+}
+
+// ==========================================
+// ENTIDADES
+// ==========================================
 
 model Usuario {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  nombre    String
-  rol       Rol      @default(USUARIO)
-  creadoEn  DateTime @default(now())
+  id            String     @id @default(cuid())
+  email         String     @unique
+  nombre        String
+  rol           RolUsuario
+  centroSaludId String?
 
-  notas     Nota[]
+  centroSalud CentroSalud? @relation(fields: [centroSaludId], references: [id], onDelete: Restrict)
+
+  @@index([centroSaludId])
 }
 
-// Entidad de ejemplo: bórrenla en la clase 3.
-// Muestra el patrón de una relación 1-N con su índice.
-model Nota {
-  id            String   @id @default(cuid())
-  titulo        String
-  contenido     String
-  creadaEn      DateTime @default(now())
-  actualizadaEn DateTime @updatedAt
+model CentroSalud {
+  id               String           @id @default(cuid())
+  nombre           String
+  nivelComplejidad NivelComplejidad
+  ubicacion        String
 
-  autor         Usuario  @relation(fields: [autorId], references: [id], onDelete: Cascade)
-  autorId       String
+  usuarios               Usuario[]
+  unidadesCuidados       UnidadCuidados[]
+  recursosEspecializados RecursoEspecializado[]
+  solicitudesOrigen      SolicitudTraslado[]    @relation("CentroOrigen")
+  solicitudesDestino     SolicitudTraslado[]    @relation("CentroDestino")
+}
 
-  // Índice sobre la foreign key: sin esto, listar las notas de un usuario
-  // obliga a Postgres a recorrer la tabla entera.
-  @@index([autorId])
+model UnidadCuidados {
+  id               String     @id @default(cuid())
+  centroSaludId    String
+  tipo             TipoUnidad
+  camasDisponibles Int        @default(0)
+
+  centroSalud CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+
+  @@index([centroSaludId])
+}
+
+model RecursoEspecializado {
+  id             String        @id @default(cuid())
+  centroSaludId  String
+  tipo           TipoRecurso
+  estado         EstadoRecurso
+  ultimaRevision DateTime
+
+  centroSalud CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+
+  @@index([centroSaludId])
+}
+
+model SolicitudTraslado {
+  id              String          @id @default(cuid())
+  centroOrigenId  String
+  centroDestinoId String?
+  pacienteDni     String
+  estado          EstadoSolicitud @default(PENDIENTE)
+  fechaSolicitud  DateTime        @default(now())
+
+  centroOrigen      CentroSalud         @relation("CentroOrigen", fields: [centroOrigenId], references: [id], onDelete: Restrict)
+  centroDestino     CentroSalud?        @relation("CentroDestino", fields: [centroDestinoId], references: [id], onDelete: Restrict)
+  evaluacionTriaje  EvaluacionTriaje?
+  tripulacionMedica TripulacionMedica[]
+  registrosBitacora RegistroBitacora[]
+
+  @@index([centroOrigenId])
+  @@index([centroDestinoId])
+}
+
+model EvaluacionTriaje {
+  id                    String        @id @default(cuid())
+  solicitudId           String        @unique
+  frecuenciaCardiaca    Int
+  presionSistolica      Int
+  presionDiastolica     Int
+  nivelUrgenciaSugerido NivelUrgencia
+
+  solicitudTraslado SolicitudTraslado @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+
+  // No necesita @@index porque @unique ya crea uno automáticamente
+}
+
+model TripulacionMedica {
+  id                    String            @id @default(cuid())
+  solicitudId           String
+  patenteAmbulancia     String
+  paramedicoResponsable String
+  estado                EstadoTripulacion
+
+  solicitudTraslado SolicitudTraslado  @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
+  registrosBitacora RegistroBitacora[]
+
+  @@index([solicitudId])
+}
+
+model RegistroBitacora {
+  id                  String         @id @default(cuid())
+  solicitudId         String
+  tripulacionMedicaId String?
+  fechaHora           DateTime       @default(now())
+  evento              EventoBitacora
+  observaciones       String?
+
+  solicitudTraslado SolicitudTraslado  @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
+  tripulacionMedica TripulacionMedica? @relation(fields: [tripulacionMedicaId], references: [id], onDelete: Restrict)
+
+  @@index([solicitudId])
+  @@index([tripulacionMedicaId])
 }
