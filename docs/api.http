@@ -1,0 +1,319 @@
+###############################################################################
+# CareRoute — pruebas de la API sin interfaz
+#
+# Se corre con la extensión "REST Client" de VS Code (humao.rest-client).
+# Cada bloque que empieza con ### es un pedido independiente: aparece un botón
+# "Send Request" arriba y el resultado se abre al costado.
+#
+# LO IMPORTANTE ES EL STATUS CODE, no solo el body. Un 500 donde debería haber un
+# 400 es un error silencioso: la respuesta "parece" un error y en realidad es un bug.
+#
+# La base es compartida con el resto del equipo: los POST dejan filas reales. Por eso
+# los DNI de prueba empiezan con 99. Para limpiar: npm run db:seed
+###############################################################################
+
+@base = http://localhost:3000
+# Para probar contra producción, comentá la línea de arriba y descomentá esta:
+# @base = https://care-route.vercel.app
+
+# Identidades del seed. TODO (clase 6): esto se reemplaza por Supabase Auth.
+@derivante = derivante@heca.gov.ar
+@receptor = receptor@centenario.gov.ar
+
+
+###############################################################################
+# GET /api/solicitudes
+###############################################################################
+
+### Éxito → 200, array de solicitudes del centro
+GET {{base}}/api/solicitudes
+x-usuario-email: {{derivante}}
+
+### Filtrada por rol y estado → 200. Esto es HU06: lo que tiene que preparar el receptor
+GET {{base}}/api/solicitudes?rol=destino&estado=APROBADA
+x-usuario-email: {{receptor}}
+
+### Filtro inválido → 400
+GET {{base}}/api/solicitudes?estado=INVENTADO
+x-usuario-email: {{derivante}}
+
+### Sin sesión → 401
+GET {{base}}/api/solicitudes
+
+
+###############################################################################
+# POST /api/solicitudes
+###############################################################################
+
+### Éxito → 201. Copiá el "id" de la respuesta para los pedidos de más abajo
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "99000001"
+}
+
+### DNI inválido → 400
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "abc"
+}
+
+### Intento de inyectar campos que no le corresponden al cliente → 201,
+### pero Zod descarta "estado" y "centroOrigenId": la solicitud se crea PENDIENTE
+### y en el centro del usuario de la sesión. Verificá eso en la respuesta.
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "99000002",
+  "estado": "APROBADA",
+  "centroOrigenId": "centro-destino-1"
+}
+
+### Rol incorrecto → 403
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "pacienteDni": "99000003"
+}
+
+### Sin sesión → 401
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+
+{
+  "pacienteDni": "99000004"
+}
+
+
+###############################################################################
+# GET /api/solicitudes/:id
+###############################################################################
+
+### Éxito → 200
+GET {{base}}/api/solicitudes/solicitud-pendiente-1
+x-usuario-email: {{derivante}}
+
+### No existe → 404
+GET {{base}}/api/solicitudes/no-existe
+x-usuario-email: {{derivante}}
+
+### Sin sesión → 401
+GET {{base}}/api/solicitudes/solicitud-pendiente-1
+
+
+###############################################################################
+# PATCH /api/solicitudes/:id
+###############################################################################
+
+### Éxito → 200 (la solicitud está PENDIENTE)
+PATCH {{base}}/api/solicitudes/solicitud-pendiente-1
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "99887766"
+}
+
+### Body inválido → 400
+PATCH {{base}}/api/solicitudes/solicitud-pendiente-1
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "1"
+}
+
+### Estado no editable → 409 (solicitud-ok-1 está APROBADA)
+PATCH {{base}}/api/solicitudes/solicitud-ok-1
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "pacienteDni": "99112233"
+}
+
+
+###############################################################################
+# POST /api/solicitudes/:id/evaluacion   (HU02)
+###############################################################################
+
+### Éxito → 201. Usá el id de una solicitud recién creada, sin triaje todavía
+POST {{base}}/api/solicitudes/PEGAR_ID_ACA/evaluacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "frecuenciaCardiaca": 130,
+  "presionSistolica": 85,
+  "presionDiastolica": 55,
+  "nivelUrgenciaSugerido": "CRITICO"
+}
+
+### Signos vitales fuera de rango → 400
+POST {{base}}/api/solicitudes/PEGAR_ID_ACA/evaluacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "frecuenciaCardiaca": 9000,
+  "presionSistolica": 85,
+  "presionDiastolica": 55,
+  "nivelUrgenciaSugerido": "CRITICO"
+}
+
+### Ya tiene evaluación → 409 (solicitud-ok-1 viene con triaje desde el seed)
+POST {{base}}/api/solicitudes/solicitud-ok-1/evaluacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "frecuenciaCardiaca": 80,
+  "presionSistolica": 120,
+  "presionDiastolica": 80,
+  "nivelUrgenciaSugerido": "MEDIO"
+}
+
+
+###############################################################################
+# GET /api/solicitudes/:id/candidatos   (HU03)
+###############################################################################
+
+### Éxito → 200, centros ordenados por puntaje
+GET {{base}}/api/solicitudes/solicitud-ok-1/candidatos
+x-usuario-email: {{derivante}}
+
+### Sin evaluación de triaje → 409
+GET {{base}}/api/solicitudes/solicitud-pendiente-1/candidatos
+x-usuario-email: {{derivante}}
+
+### No existe → 404
+GET {{base}}/api/solicitudes/no-existe/candidatos
+x-usuario-email: {{derivante}}
+
+
+###############################################################################
+# POST /api/solicitudes/:id/aprobacion   (HU04 — OPERACIÓN CORE)
+###############################################################################
+
+### Éxito → 201. Usá una solicitud EVALUANDO, con triaje ya cargado
+POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "centroDestinoId": "centro-destino-1"
+}
+
+### Body inválido → 400
+POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "centroDestinoId": ""
+}
+
+### Rol incorrecto → 403 (el derivante no aprueba)
+POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{
+  "centroDestinoId": "centro-destino-1"
+}
+
+### Sin evaluación de triaje → 409
+POST {{base}}/api/solicitudes/solicitud-pendiente-1/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "centroDestinoId": "centro-destino-1"
+}
+
+### Ya aprobada → 409
+POST {{base}}/api/solicitudes/solicitud-ok-1/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "centroDestinoId": "centro-destino-1"
+}
+
+### No existe → 404
+POST {{base}}/api/solicitudes/no-existe/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "centroDestinoId": "centro-destino-1"
+}
+
+
+###############################################################################
+# GET /api/solicitudes/:id/bitacora   (HU07)
+###############################################################################
+
+### Éxito → 200 (array vacío si todavía no hay eventos registrados)
+GET {{base}}/api/solicitudes/solicitud-ok-1/bitacora
+x-usuario-email: {{derivante}}
+
+### No existe → 404
+GET {{base}}/api/solicitudes/no-existe/bitacora
+x-usuario-email: {{derivante}}
+
+### Sin sesión → 401
+GET {{base}}/api/solicitudes/solicitud-ok-1/bitacora
+
+
+###############################################################################
+# GET /api/centros
+###############################################################################
+
+### Éxito → 200
+GET {{base}}/api/centros
+x-usuario-email: {{derivante}}
+
+### Sin sesión → 401
+GET {{base}}/api/centros
+
+
+###############################################################################
+# PATCH /api/unidades/:id   (HU05)
+###############################################################################
+
+### Éxito → 200. Sacá el id de una unidad del GET /api/centros de arriba
+PATCH {{base}}/api/unidades/PEGAR_ID_UNIDAD
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "camasDisponibles": 4
+}
+
+### Camas negativas → 400
+PATCH {{base}}/api/unidades/PEGAR_ID_UNIDAD
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "camasDisponibles": -3
+}
+
+### Unidad de otro centro, o inexistente → 404
+PATCH {{base}}/api/unidades/no-existe
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{
+  "camasDisponibles": 2
+}

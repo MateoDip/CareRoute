@@ -49,6 +49,52 @@ async function main() {
     },
   })
 
+  // 2b. Unidades de cuidados — sin camas cargadas, ninguna derivación se puede
+  // aprobar, así que hacen falta para probar HU04.
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-origen-uti' },
+    update: {},
+    create: {
+      id: 'unidad-origen-uti',
+      centroSaludId: centroOrigen.id,
+      tipo: 'UTI',
+      camasDisponibles: 1,
+    },
+  })
+
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-destino-uti' },
+    update: {},
+    create: {
+      id: 'unidad-destino-uti',
+      centroSaludId: centroDestino.id,
+      tipo: 'UTI',
+      camasDisponibles: 3,
+    },
+  })
+
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-destino-uco' },
+    update: {},
+    create: {
+      id: 'unidad-destino-uco',
+      centroSaludId: centroDestino.id,
+      tipo: 'UCO',
+      camasDisponibles: 2,
+    },
+  })
+
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-destino-sala' },
+    update: {},
+    create: {
+      id: 'unidad-destino-sala',
+      centroSaludId: centroDestino.id,
+      tipo: 'SALA_COMUN',
+      camasDisponibles: 8,
+    },
+  })
+
   // 3. Caso Feliz: Solicitud aprobada con evaluación de triaje completa
   await prisma.solicitudTraslado.upsert({
     where: { id: 'solicitud-ok-1' },
@@ -83,7 +129,7 @@ async function main() {
     }
   })
 
-  const solicitudPendiente = await prisma.solicitudTraslado.upsert({
+  await prisma.solicitudTraslado.upsert({
     where: { id: 'solicitud-pendiente-1' },
     update: {},
     create: {
