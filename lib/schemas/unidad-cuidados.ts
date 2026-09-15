@@ -1,10 +1,24 @@
 import { z } from "zod";
 
-export const unidadCuidadosSchema = z.object({
-  id: z.string().uuid("El ID debe ser un UUID válido"),
-  centroSaludId: z.string().uuid("El ID del centro debe ser válido"),
-  tipo: z.enum(["UTI", "UCO", "SALA_COMUN", "GUARDIA"]),
-  camasDisponibles: z.number().int("Debe ser un número entero").min(0, "La cantidad de camas no puede ser negativa"),
-});
+export const tipoUnidadSchema = z.enum(["UTI", "UCO", "SALA_COMUN", "GUARDIA"]);
 
-export type UnidadCuidados = z.infer<typeof unidadCuidadosSchema>;
+/**
+ * Body de PATCH /api/unidades/:id.
+ *
+ * `camasDisponibles` no puede ser negativo: un hospital no tiene menos de cero
+ * camas. La base no lo impide (INTEGER acepta negativos), así que lo frena Zod.
+ */
+export const actualizarUnidadSchema = z
+  .object({
+    camasDisponibles: z
+      .number()
+      .int("Debe ser un número entero")
+      .min(0, "No puede haber menos de cero camas")
+      .max(500, "Valor implausible para una unidad"),
+  })
+  .partial()
+  .refine((datos) => Object.keys(datos).length > 0, {
+    message: "Hay que enviar al menos un campo para modificar",
+  });
+
+export type ActualizarUnidad = z.infer<typeof actualizarUnidadSchema>;
