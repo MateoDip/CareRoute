@@ -1,12 +1,30 @@
 import { z } from "zod";
 
-export const evaluacionTriajeSchema = z.object({
-  id: z.string().uuid("El ID debe ser un UUID válido"),
-  solicitudId: z.string().uuid("El ID de la solicitud debe ser válido"),
-  frecuenciaCardiaca: z.number().int().min(0, "No puede ser menor a 0").max(300, "Valor fuera de rango clínico (máximo 300)"),
-  presionSistolica: z.number().int().min(0, "No puede ser menor a 0").max(300, "Presión sistólica inválida (máximo 300)"),
-  presionDiastolica: z.number().int().min(0, "No puede ser menor a 0").max(200, "Presión diastólica inválida (máximo 200)"),
-  nivelUrgenciaSugerido: z.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]),
+export const nivelUrgenciaSchema = z.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]);
+
+/**
+ * Body de POST /api/solicitudes/:id/evaluacion.
+ *
+ * Los rangos son los del signo vital plausible en un paciente vivo. Sirven para
+ * atajar errores de tipeo, no para diagnosticar.
+ */
+export const crearEvaluacionSchema = z.object({
+  frecuenciaCardiaca: z
+    .number()
+    .int("Debe ser un número entero")
+    .min(20, "Frecuencia cardíaca fuera de rango")
+    .max(250, "Frecuencia cardíaca fuera de rango"),
+  presionSistolica: z
+    .number()
+    .int("Debe ser un número entero")
+    .min(40, "Presión sistólica fuera de rango")
+    .max(300, "Presión sistólica fuera de rango"),
+  presionDiastolica: z
+    .number()
+    .int("Debe ser un número entero")
+    .min(20, "Presión diastólica fuera de rango")
+    .max(200, "Presión diastólica fuera de rango"),
+  nivelUrgenciaSugerido: nivelUrgenciaSchema,
 });
 
-export type EvaluacionTriaje = z.infer<typeof evaluacionTriajeSchema>;
+export type CrearEvaluacion = z.infer<typeof crearEvaluacionSchema>;
