@@ -7,6 +7,7 @@
 Mateo Dip — responsable del repositorio (creó el repo y tiene la cuenta de Vercel)
 Nicolas Censi
 Mateo Duran
+Fernando Almansa
 
 **Materia:** Metodologías y Desarrollos Web
 **URL de producción:** 
@@ -40,6 +41,8 @@ disponible y ausencia de trazabilidad del paciente durante el traslado.
 | Mateo  Dip | [@`MateoDip`](https://github.com/MateoDip) 
 | Mateo Duran | [@`mduranclem`](https://github.com/mduranclem)
 | Nicolas Censi | [@`Nicolas-Censi`](https://github.com/Nicolas-Censi)
+| Fernando Almansa | [@`FernandoAlmansa`](https://github.com/FernandoAlmansa)
+
 ### 2.2 Roles de usuario dentro del sistema
 
 | Rol | Qué hace |
