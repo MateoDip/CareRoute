@@ -14,8 +14,9 @@
 
 | Rol | Quién es | Qué puede hacer que el otro no |
 |---|---|---|
-| **Médico Derivante** | Profesional en el hospital de origen con un paciente crítico. | Puede crear solicitudes de traslado y registrar evaluaciones de triaje. |
-| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Puede aprobar o rechazar solicitudes entrantes y actualizar la capacidad de su Unidad de Cuidados. |
+| **Admin** | Encargado de configurar el sistema. | Puede crear/editar `CentroSalud` y dar de alta o baja `Usuario`, asignándole rol y centro. No participa del flujo clínico de derivaciones. |
+| **Médico Derivante** | Profesional en el hospital de origen con un paciente crítico. | Puede crear `SolicitudTraslado` y registrar `EvaluacionTriaje`. |
+| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Puede aprobar o rechazar solicitudes entrantes y actualizar `UnidadCuidados`/`RecursoEspecializado` de su `CentroSalud`. |
 
 ## 3. Entidades
 
