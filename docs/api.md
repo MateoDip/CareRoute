@@ -115,3 +115,67 @@ traslado). Están marcadas con `TODO (clase 5)`.
 | `409` | Existe, pero su estado no admite la operación |
 
 No se usa `200` con `{ ok: false }`. El status es parte de la respuesta.
+
+---
+
+## Los errores, en detalle
+
+Cada fila sale de un *caso de error* de un criterio de aceptación de
+[`spec.md`](./spec.md) o de una regla de negocio de su sección 6. La columna
+**Capa** indica quién agarra el error, y responde una sola pregunta:
+*¿alcanza con mirar el body para decidirlo?* Si sí, es Zod. Si hay que ir a
+buscar el estado del sistema, es una regla.
+
+| Operación | Situación | Status | Capa | Mensaje y dato |
+|---|---|---|---|---|
+| `POST /api/solicitudes` | Falta el DNI del paciente o tiene formato inválido | 400 | Zod | "Datos inválidos" + `detalles` |
+| `POST /api/solicitudes/:id/evaluacion` | Falta un signo vital obligatorio (H1) | 400 | Zod | "Datos inválidos" + `detalles` |
+| `POST /api/solicitudes/:id/evaluacion` | Presión, saturación o frecuencia fuera de rango fisiológico | 400 | Zod | "Datos inválidos" + `detalles` |
+| `POST /api/solicitudes/:id/evaluacion` | La solicitud ya tiene evaluación (relación 1 a 1) | 409 | regla | "La solicitud ya fue evaluada" + `estadoActual` |
+| `PATCH /api/unidades/:id` | Camas negativas (H4) | 400 | Zod | "Datos inválidos" + `detalles` |
+| `PATCH /api/solicitudes/:id` | La solicitud ya no está `PENDIENTE` | 409 | regla | "Solo se pueden corregir solicitudes pendientes" + `estadoActual` |
+| `GET /api/solicitudes/:id/candidatos` | La solicitud todavía no tiene evaluación de triaje | 409 | regla | "Falta la evaluación de triaje" + `estadoActual` |
+| `POST /api/solicitudes/:id/aprobacion` | La unidad requerida del destino quedó en 0 camas (H3) | 409 | regla | "Capacidad agotada" + `tipoRequerido` + `tiposConCamaLibre` |
+| `POST /api/solicitudes/:id/aprobacion` | El estado no admite la aprobación | 409 | regla | "La solicitud no puede aprobarse en este estado" + `estadoActual` + `transicionesPosibles` |
+| `POST /api/solicitudes/:id/aprobacion` | El centro de destino es el mismo que el de origen | 409 | regla | "El centro de destino no puede ser el de origen" |
+| rechazo de una solicitud `APROBADA` | Lo intenta el `MEDICO_DERIVANTE` (spec §6) | 403 | regla + sesión | "Una solicitud aprobada solo puede rechazarla el centro receptor" + `rolesHabilitados` |
+| cualquier ruta con `:id` | El id no existe, o el recurso es de otro centro | 404 | consulta | "El recurso no existe" |
+| todas | Sin sesión | 401 | sesión | "Falta autenticación" |
+| todas | Con sesión pero rol incorrecto | 403 | sesión | detalle según la operación |
+
+### Por qué 400 y no 422
+
+En este proyecto **400 es todo lo que rechaza Zod y 409 todo lo que rechaza una
+regla de negocio**. `422 Unprocessable Content` también sería válido para el
+segundo grupo, pero mezclar los dos sin criterio escrito es lo que produce que
+cada endpoint responda distinto. Si el equipo quiere cambiar a 422, va en un ADR.
+
+### Por qué el 409 de capacidad enumera
+
+El criterio de aceptación de H3 dice que ante "Capacidad agotada" se muestra una
+alerta y se recarga el ranking. Para eso la pantalla necesita saber **qué
+alternativas quedan**, no solo que falló. Por eso la respuesta lleva
+`tiposConCamaLibre` como array y no dentro del texto del mensaje:
+
+```json
+{
+  "error": "El centro de destino no tiene camas UTI disponibles",
+  "tipoRequerido": "UTI",
+  "tiposConCamaLibre": ["UCO"]
+}
+```
+
+El mismo razonamiento vale para `transicionesPosibles`: decir "no se puede" sin
+decir qué sí se puede obliga al cliente a adivinar.
+
+### Dónde vive cada regla
+
+| Archivo | Qué decide |
+|---|---|
+| `lib/disponibilidad.ts` | Si hay cama del tipo requerido y qué alternativas quedan |
+| `lib/reglas-solicitud.ts` | Qué transiciones de estado son válidas y quién puede rechazar |
+| `lib/scoring-hospitales.ts` | Qué unidad requiere cada nivel de urgencia y el puntaje del ranking |
+
+Los tres son **funciones puras**: no importan Prisma ni Next, no leen la base y
+no llaman a `new Date()`. Por eso se prueban con `npm test` en milisegundos, sin
+levantar servidor ni base.
