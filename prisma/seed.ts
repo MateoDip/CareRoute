@@ -64,7 +64,7 @@ async function main() {
 
   await prisma.unidadCuidados.upsert({
     where: { id: 'unidad-destino-uti' },
-    update: {},
+    update: { camasDisponibles: 3 },
     create: {
       id: 'unidad-destino-uti',
       centroSaludId: centroDestino.id,
@@ -75,7 +75,7 @@ async function main() {
 
   await prisma.unidadCuidados.upsert({
     where: { id: 'unidad-destino-uco' },
-    update: {},
+    update: { camasDisponibles: 2 },
     create: {
       id: 'unidad-destino-uco',
       centroSaludId: centroDestino.id,
@@ -98,7 +98,7 @@ async function main() {
   // 3. Caso Feliz: Solicitud aprobada con evaluación de triaje completa
   await prisma.solicitudTraslado.upsert({
     where: { id: 'solicitud-ok-1' },
-    update: {},
+    update: { estado: 'APROBADA', centroDestinoId: centroDestino.id },
     create: {
       id: 'solicitud-ok-1',
       centroOrigenId: centroOrigen.id,
@@ -136,6 +136,99 @@ async function main() {
       id: 'solicitud-pendiente-1',
       centroOrigenId: centroOrigen.id,
       pacienteDni: '87654321',
+      estado: 'PENDIENTE',
+    },
+  })
+
+  // 5. Datos para docs/api.http — un caso por fila del catálogo de errores.
+  //    Los `update` reinician el estado: `npm run db:seed` deja todo listo para
+  //    volver a correr el archivo entero después de aprobar o rechazar.
+
+  // Receptor que trabaja en el centro de origen: dispara "destino = origen" (409).
+  await prisma.usuario.upsert({
+    where: { email: 'receptor@heca.gov.ar' },
+    update: {},
+    create: {
+      email: 'receptor@heca.gov.ar',
+      nombre: 'Dr. Ruiz (Receptor HECA)',
+      rol: 'MEDICO_RECEPTOR',
+      centroSaludId: centroOrigen.id,
+    },
+  })
+
+  // Centro con UTI en cero y UCO libre: dispara "Capacidad agotada" (H3).
+  const centroSinCamas = await prisma.centroSalud.upsert({
+    where: { id: 'centro-sin-camas-1' },
+    update: {},
+    create: {
+      id: 'centro-sin-camas-1',
+      nombre: 'Sanatorio de Prueba Sin Camas UTI',
+      nivelComplejidad: 'MEDIA',
+      ubicacion: 'Córdoba 1000',
+    },
+  })
+
+  await prisma.usuario.upsert({
+    where: { email: 'receptor@sincamas.gov.ar' },
+    update: {},
+    create: {
+      email: 'receptor@sincamas.gov.ar',
+      nombre: 'Dra. Sosa (Receptora sin camas)',
+      rol: 'MEDICO_RECEPTOR',
+      centroSaludId: centroSinCamas.id,
+    },
+  })
+
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-sincamas-uti' },
+    update: { camasDisponibles: 0 },
+    create: {
+      id: 'unidad-sincamas-uti',
+      centroSaludId: centroSinCamas.id,
+      tipo: 'UTI',
+      camasDisponibles: 0,
+    },
+  })
+
+  await prisma.unidadCuidados.upsert({
+    where: { id: 'unidad-sincamas-uco' },
+    update: { camasDisponibles: 2 },
+    create: {
+      id: 'unidad-sincamas-uco',
+      centroSaludId: centroSinCamas.id,
+      tipo: 'UCO',
+      camasDisponibles: 2,
+    },
+  })
+
+  // Solicitud EVALUANDO, urgencia CRITICO (→ UTI), sin destino: la que se aprueba.
+  await prisma.solicitudTraslado.upsert({
+    where: { id: 'solicitud-evaluada-1' },
+    update: { estado: 'EVALUANDO', centroDestinoId: null },
+    create: {
+      id: 'solicitud-evaluada-1',
+      centroOrigenId: centroOrigen.id,
+      pacienteDni: '99000001',
+      estado: 'EVALUANDO',
+      evaluacionTriaje: {
+        create: {
+          frecuenciaCardiaca: 130,
+          presionSistolica: 85,
+          presionDiastolica: 50,
+          nivelUrgenciaSugerido: 'CRITICO',
+        },
+      },
+    },
+  })
+
+  // Solicitud de otro centro: para el derivante del HECA tiene que dar 404.
+  await prisma.solicitudTraslado.upsert({
+    where: { id: 'solicitud-ajena-1' },
+    update: {},
+    create: {
+      id: 'solicitud-ajena-1',
+      centroOrigenId: centroSinCamas.id,
+      pacienteDni: '99000002',
       estado: 'PENDIENTE',
     },
   })

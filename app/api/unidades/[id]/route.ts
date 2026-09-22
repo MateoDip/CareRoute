@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { actualizarUnidad, obtenerUnidad } from "@/lib/db/centros";
 import {
+  errorInterno,
   errorValidacion,
   noAutenticado,
   noEncontrado,
@@ -24,29 +25,33 @@ type Contexto = { params: Promise<{ id: string }> };
  * regla de la clase es uno como máximo.
  */
 export async function PATCH(request: Request, { params }: Contexto) {
-  const { id } = await params;
+  try {
+    const { id } = await params;
 
-  const body: unknown = await request.json().catch(() => null);
-  const datos = actualizarUnidadSchema.safeParse(body);
-  if (!datos.success) return errorValidacion(datos.error);
+    const body: unknown = await request.json().catch(() => null);
+    const datos = actualizarUnidadSchema.safeParse(body);
+    if (!datos.success) return errorValidacion(datos.error);
 
-  const sesion = await getSesion(request);
-  if (!sesion) return noAutenticado();
+    const sesion = await getSesion(request);
+    if (!sesion) return noAutenticado();
 
-  const unidad = await obtenerUnidad(id);
-  if (!unidad) return noEncontrado("La unidad no existe");
+    const unidad = await obtenerUnidad(id);
+    if (!unidad) return noEncontrado("La unidad no existe");
 
-  // La unidad es de otro centro: 404, no 403. No se confirma que el id sea real.
-  if (unidad.centroSaludId !== sesion.centroSaludId) {
-    return noEncontrado("La unidad no existe");
+    // La unidad es de otro centro: 404, no 403. No se confirma que el id sea real.
+    if (unidad.centroSaludId !== sesion.centroSaludId) {
+      return noEncontrado("La unidad no existe");
+    }
+
+    // Acá sí 403: el usuario sabe que la unidad existe (es de su centro), lo que le
+    // falta es el rol.
+    if (sesion.rol !== "ADMIN" && sesion.rol !== "MEDICO_RECEPTOR") {
+      return sinPermiso("No tenés permiso para actualizar la disponibilidad");
+    }
+
+    const actualizada = await actualizarUnidad(id, datos.data);
+    return NextResponse.json(actualizada, { status: 200 });
+  } catch (error) {
+    return errorInterno("PATCH /api/unidades/:id", error);
   }
-
-  // Acá sí 403: el usuario sabe que la unidad existe (es de su centro), lo que le
-  // falta es el rol.
-  if (sesion.rol !== "ADMIN" && sesion.rol !== "MEDICO_RECEPTOR") {
-    return sinPermiso("No tenés permiso para actualizar la disponibilidad");
-  }
-
-  const actualizada = await actualizarUnidad(id, datos.data);
-  return NextResponse.json(actualizada, { status: 200 });
 }

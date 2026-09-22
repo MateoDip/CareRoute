@@ -19,6 +19,18 @@
 # Identidades del seed. TODO (clase 6): esto se reemplaza por Supabase Auth.
 @derivante = derivante@heca.gov.ar
 @receptor = receptor@centenario.gov.ar
+@receptorOrigen = receptor@heca.gov.ar
+@receptorSinCamas = receptor@sincamas.gov.ar
+
+# Datos del seed (prisma/seed.ts). Después de aprobar o rechazar: npm run db:seed
+@solicitudPendiente = solicitud-pendiente-1
+@solicitudEvaluada = solicitud-evaluada-1
+@solicitudAprobada = solicitud-ok-1
+@solicitudDeOtroCentro = solicitud-ajena-1
+@centroConCamas = centro-destino-1
+@centroSinCamas = centro-sin-camas-1
+@centroOrigen = centro-origen-1
+@unidadUti = unidad-destino-uti
 
 
 ###############################################################################
@@ -159,7 +171,7 @@ x-usuario-email: {{derivante}}
 }
 
 ### Signos vitales fuera de rango → 400
-POST {{base}}/api/solicitudes/PEGAR_ID_ACA/evaluacion
+POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
@@ -204,17 +216,11 @@ x-usuario-email: {{derivante}}
 # POST /api/solicitudes/:id/aprobacion   (HU04 — OPERACIÓN CORE)
 ###############################################################################
 
-### Éxito → 201. Usá una solicitud EVALUANDO, con triaje ya cargado
-POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
-Content-Type: application/json
-x-usuario-email: {{receptor}}
-
-{
-  "centroDestinoId": "centro-destino-1"
-}
+# El éxito (201) está en "Camino feliz", al final del archivo: aprueba
+# solicitud-evaluada-1 y cambia su estado, así que va después de los errores.
 
 ### Body inválido → 400
-POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
@@ -223,30 +229,30 @@ x-usuario-email: {{receptor}}
 }
 
 ### Rol incorrecto → 403 (el derivante no aprueba)
-POST {{base}}/api/solicitudes/PEGAR_ID_ACA/aprobacion
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
 {
-  "centroDestinoId": "centro-destino-1"
+  "centroDestinoId": "{{centroConCamas}}"
 }
 
-### Sin evaluación de triaje → 409
-POST {{base}}/api/solicitudes/solicitud-pendiente-1/aprobacion
+### PENDIENTE, sin triaje → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudPendiente}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 {
-  "centroDestinoId": "centro-destino-1"
+  "centroDestinoId": "{{centroConCamas}}"
 }
 
-### Ya aprobada → 409
-POST {{base}}/api/solicitudes/solicitud-ok-1/aprobacion
+### Ya aprobada → 409 + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 {
-  "centroDestinoId": "centro-destino-1"
+  "centroDestinoId": "{{centroConCamas}}"
 }
 
 ### No existe → 404
@@ -255,7 +261,7 @@ Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 {
-  "centroDestinoId": "centro-destino-1"
+  "centroDestinoId": "{{centroConCamas}}"
 }
 
 
@@ -291,8 +297,8 @@ GET {{base}}/api/centros
 # PATCH /api/unidades/:id   (HU05)
 ###############################################################################
 
-### Éxito → 200. Sacá el id de una unidad del GET /api/centros de arriba
-PATCH {{base}}/api/unidades/PEGAR_ID_UNIDAD
+### Éxito → 200
+PATCH {{base}}/api/unidades/{{unidadUti}}
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
@@ -301,7 +307,7 @@ x-usuario-email: {{receptor}}
 }
 
 ### Camas negativas → 400
-PATCH {{base}}/api/unidades/PEGAR_ID_UNIDAD
+PATCH {{base}}/api/unidades/{{unidadUti}}
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
@@ -317,16 +323,31 @@ x-usuario-email: {{receptor}}
 {
   "camasDisponibles": 2
 }
-### ---------------------------------------------------------------------------
-### Casos de error del catálogo (docs/api.md → "Los errores, en detalle")
-### Cada request lleva arriba el status esperado. Mirar el status, no el body:
-### el error de esta clase es el 500 donde iba un 409, y desde afuera se ven igual.
-### ---------------------------------------------------------------------------
+###############################################################################
+# POST /api/solicitudes/:id/rechazo   (spec §6)
+###############################################################################
 
-@base = http://localhost:3000
-# @base = https://<tu-app>.vercel.app
-@derivante = derivante@centro-origen.test
-@receptor = receptor@centro-destino.test
+### El derivante intenta rechazar una solicitud ya APROBADA → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+x-usuario-email: {{derivante}}
+
+### No existe → 404
+POST {{base}}/api/solicitudes/no-existe/rechazo
+x-usuario-email: {{receptor}}
+
+### Sin sesión → 401
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+
+# El éxito (200) y el "ya rechazada" (409) están al final, en "Camino feliz":
+# cambian el estado de solicitud-ok-1.
+
+
+###############################################################################
+# Casos de error del catálogo (docs/api.md → "Los errores, en detalle")
+# Una request por fila. Mirar el status, no el body: un 500 donde iba un 409
+# desde afuera se ve igual de roto, y solo el número los distingue.
+# Correr en orden, después de: npm run db:seed
+###############################################################################
 
 ### DNI faltante → 400 (Zod)
 POST {{base}}/api/solicitudes
@@ -335,85 +356,104 @@ x-usuario-email: {{derivante}}
 
 {}
 
-### presión fuera de rango fisiológico → 400 (Zod)
+### Evaluación con presión fuera de rango fisiológico → 400 (Zod)
 POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
-{ "presionSistolica": 900, "presionDiastolica": 60, "frecuenciaCardiaca": 88 }
+{ "frecuenciaCardiaca": 88, "presionSistolica": 900, "presionDiastolica": 60, "nivelUrgenciaSugerido": "ALTO" }
 
-### camas negativas → 400 (Zod, caso de error de H4)
+### Camas negativas → 400 (Zod, caso de error de H4)
 PATCH {{base}}/api/unidades/{{unidadUti}}
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 { "camasDisponibles": -1 }
 
-### evaluar dos veces la misma solicitud → 409 (regla, relación 1 a 1)
+### Evaluar dos veces la misma solicitud → 409 + estadoActual (relación 1 a 1)
 POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/evaluacion
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
-{ "presionSistolica": 120, "presionDiastolica": 80, "frecuenciaCardiaca": 75 }
+{ "frecuenciaCardiaca": 75, "presionSistolica": 120, "presionDiastolica": 80, "nivelUrgenciaSugerido": "BAJO" }
 
-### corregir una solicitud que ya no está PENDIENTE → 409 + estadoActual
-PATCH {{base}}/api/solicitudes/{{solicitudAprobada}}
+### Corregir una solicitud que ya no está PENDIENTE → 409 + estadoActual
+PATCH {{base}}/api/solicitudes/{{solicitudEvaluada}}
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
-{ "pacienteDni": "30111222" }
+{ "pacienteDni": "99111222" }
 
-### pedir candidatos sin evaluación de triaje → 409 + estadoActual
+### Pedir candidatos sin evaluación de triaje → 409 + estadoActual
 GET {{base}}/api/solicitudes/{{solicitudPendiente}}/candidatos
 x-usuario-email: {{derivante}}
 
-### aprobar hacia un centro sin camas del tipo requerido
-### → 409 + tipoRequerido + tiposConCamaLibre  (caso de error de H3)
+### Aprobar hacia un centro sin camas UTI → 409 + tipoRequerido + tiposConCamaLibre (H3)
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptorSinCamas}}
+
+{ "centroDestinoId": "{{centroSinCamas}}" }
+
+### Aprobar hacia el mismo centro de origen → 409
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptorOrigen}}
+
+{ "centroDestinoId": "{{centroOrigen}}" }
+
+### Aprobar hacia un centro que no es el propio → 403
 POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 { "centroDestinoId": "{{centroSinCamas}}" }
 
-### aprobar una solicitud ya aprobada → 409 + transicionesPosibles
+### Aprobar una solicitud ya aprobada → 409 + estadoActual + transicionesPosibles
 POST {{base}}/api/solicitudes/{{solicitudAprobada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 { "centroDestinoId": "{{centroConCamas}}" }
 
-### el derivante intenta rechazar una solicitud ya APROBADA → 403 (spec §6)
+### El derivante intenta rechazar una solicitud ya APROBADA → 403 + rolesHabilitados (spec §6)
 POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-Content-Type: application/json
 x-usuario-email: {{derivante}}
 
-{ "motivo": "el paciente mejoró" }
-
-### id inexistente → 404
+### Id inexistente → 404
 GET {{base}}/api/solicitudes/no-existe-este-id
 x-usuario-email: {{derivante}}
 
-### solicitud de otro centro → 404, no 403 (no se filtra qué ids son reales)
+### Solicitud de otro centro → 404, no 403 (no se filtra qué ids son reales)
 GET {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}
 x-usuario-email: {{derivante}}
 
-### sin header de sesión → 401
+### Sin header de sesión → 401
 GET {{base}}/api/solicitudes
 
 ### ---------------------------------------------------------------------------
 ### Camino feliz, para confirmar que las reglas no rompieron lo que funcionaba
 ### ---------------------------------------------------------------------------
 
-### crear solicitud → 201
+### Crear solicitud → 201
 POST {{base}}/api/solicitudes
 Content-Type: application/json
 x-usuario-email: {{derivante}}
 
-{ "pacienteDni": "28999444" }
+{ "pacienteDni": "99899444" }
 
-### aprobar hacia un centro con camas → 200
+### Aprobar hacia un centro con camas → 201
 POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
 Content-Type: application/json
 x-usuario-email: {{receptor}}
 
 { "centroDestinoId": "{{centroConCamas}}" }
+
+### Rechazar la APROBADA desde el receptor → 200. Pasa a RECHAZADA y la cama UCO
+### vuelve al centro destino (se ve en GET /api/centros)
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+x-usuario-email: {{receptor}}
+
+### Rechazarla otra vez → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+x-usuario-email: {{receptor}}

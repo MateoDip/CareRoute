@@ -22,8 +22,8 @@ export function noAutenticado() {
   return NextResponse.json({ error: "Falta autenticación" }, { status: 401 });
 }
 
-export function sinPermiso(detalle: string) {
-  return NextResponse.json({ error: detalle }, { status: 403 });
+export function sinPermiso(detalle: string, datos?: Record<string, unknown>) {
+  return NextResponse.json({ error: detalle, ...datos }, { status: 403 });
 }
 
 export function noEncontrado(detalle = "El recurso no existe") {

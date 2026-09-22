@@ -1,11 +1,8 @@
-import type { NivelUrgencia, Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import type { UnidadDisponible } from "@/lib/disponibilidad";
 import { prisma } from "@/lib/prisma";
 import type { ActualizarUnidad } from "@/lib/schemas/unidad-cuidados";
-import {
-  calcularPuntaje,
-  unidadRequerida,
-  type CentroCandidato,
-} from "@/lib/scoring-hospitales";
+import type { CentroConUnidades } from "@/lib/scoring-hospitales";
 
 const LIMITE_LISTADO = 50;
 
@@ -64,31 +61,28 @@ export async function actualizarUnidad(id: string, datos: ActualizarUnidad) {
   });
 }
 
-/**
- * Ranking de centros candidatos para una derivación (HU03).
- *
- * Solo entran los que tienen al menos una cama libre del tipo que requiere la
- * urgencia del paciente, y se excluye el centro de origen. El orden lo define
- * `calcularPuntaje`, que vive en lib/scoring-hospitales.ts.
- */
-export async function buscarCandidatos(params: {
-  urgencia: NivelUrgencia;
-  centroOrigenId: string;
-}) {
-  const tipoRequerido = unidadRequerida(params.urgencia);
+/** Las unidades de un centro con sus camas libres: el insumo de la regla de H3. */
+export async function listarUnidadesDelCentro(
+  centroSaludId: string,
+): Promise<UnidadDisponible[]> {
+  return prisma.unidadCuidados.findMany({
+    where: { centroSaludId },
+    select: { id: true, tipo: true, camasDisponibles: true },
+  });
+}
 
+/**
+ * Centros con sus unidades y la cantidad de recursos operativos (HU03).
+ *
+ * Solo trae datos: qué centros son elegibles y en qué orden lo decide
+ * `rankearCandidatos`, en lib/scoring-hospitales.ts.
+ */
+export async function listarCentrosConUnidades(): Promise<CentroConUnidades[]> {
   const centros = await prisma.centroSalud.findMany({
-    where: {
-      id: { not: params.centroOrigenId },
-      unidadesCuidados: {
-        some: { tipo: tipoRequerido, camasDisponibles: { gt: 0 } },
-      },
-    },
     select: {
       ...camposCentro,
       unidadesCuidados: {
-        where: { tipo: tipoRequerido },
-        select: { camasDisponibles: true },
+        select: { id: true, tipo: true, camasDisponibles: true },
       },
       recursosEspecializados: {
         where: { estado: "OPERATIVO" },
@@ -98,26 +92,12 @@ export async function buscarCandidatos(params: {
     take: LIMITE_LISTADO,
   });
 
-  const candidatos: Array<CentroCandidato & { puntaje: number }> = centros.map(
-    (centro) => {
-      const candidato: CentroCandidato = {
-        id: centro.id,
-        nombre: centro.nombre,
-        ubicacion: centro.ubicacion,
-        nivelComplejidad: centro.nivelComplejidad,
-        camasDisponibles: centro.unidadesCuidados.reduce(
-          (total, unidad) => total + unidad.camasDisponibles,
-          0,
-        ),
-        recursosOperativos: centro.recursosEspecializados.length,
-      };
-
-      return { ...candidato, puntaje: calcularPuntaje(candidato) };
-    },
-  );
-
-  return {
-    tipoUnidadRequerida: tipoRequerido,
-    candidatos: candidatos.sort((a, b) => b.puntaje - a.puntaje),
-  };
+  return centros.map((centro) => ({
+    id: centro.id,
+    nombre: centro.nombre,
+    ubicacion: centro.ubicacion,
+    nivelComplejidad: centro.nivelComplejidad,
+    unidades: centro.unidadesCuidados,
+    recursosOperativos: centro.recursosEspecializados.length,
+  }));
 }
