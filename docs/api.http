@@ -317,3 +317,103 @@ x-usuario-email: {{receptor}}
 {
   "camasDisponibles": 2
 }
+### ---------------------------------------------------------------------------
+### Casos de error del catálogo (docs/api.md → "Los errores, en detalle")
+### Cada request lleva arriba el status esperado. Mirar el status, no el body:
+### el error de esta clase es el 500 donde iba un 409, y desde afuera se ven igual.
+### ---------------------------------------------------------------------------
+
+@base = http://localhost:3000
+# @base = https://<tu-app>.vercel.app
+@derivante = derivante@centro-origen.test
+@receptor = receptor@centro-destino.test
+
+### DNI faltante → 400 (Zod)
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{}
+
+### presión fuera de rango fisiológico → 400 (Zod)
+POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{ "presionSistolica": 900, "presionDiastolica": 60, "frecuenciaCardiaca": 88 }
+
+### camas negativas → 400 (Zod, caso de error de H4)
+PATCH {{base}}/api/unidades/{{unidadUti}}
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{ "camasDisponibles": -1 }
+
+### evaluar dos veces la misma solicitud → 409 (regla, relación 1 a 1)
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/evaluacion
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{ "presionSistolica": 120, "presionDiastolica": 80, "frecuenciaCardiaca": 75 }
+
+### corregir una solicitud que ya no está PENDIENTE → 409 + estadoActual
+PATCH {{base}}/api/solicitudes/{{solicitudAprobada}}
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{ "pacienteDni": "30111222" }
+
+### pedir candidatos sin evaluación de triaje → 409 + estadoActual
+GET {{base}}/api/solicitudes/{{solicitudPendiente}}/candidatos
+x-usuario-email: {{derivante}}
+
+### aprobar hacia un centro sin camas del tipo requerido
+### → 409 + tipoRequerido + tiposConCamaLibre  (caso de error de H3)
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{ "centroDestinoId": "{{centroSinCamas}}" }
+
+### aprobar una solicitud ya aprobada → 409 + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{ "centroDestinoId": "{{centroConCamas}}" }
+
+### el derivante intenta rechazar una solicitud ya APROBADA → 403 (spec §6)
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{ "motivo": "el paciente mejoró" }
+
+### id inexistente → 404
+GET {{base}}/api/solicitudes/no-existe-este-id
+x-usuario-email: {{derivante}}
+
+### solicitud de otro centro → 404, no 403 (no se filtra qué ids son reales)
+GET {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}
+x-usuario-email: {{derivante}}
+
+### sin header de sesión → 401
+GET {{base}}/api/solicitudes
+
+### ---------------------------------------------------------------------------
+### Camino feliz, para confirmar que las reglas no rompieron lo que funcionaba
+### ---------------------------------------------------------------------------
+
+### crear solicitud → 201
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+x-usuario-email: {{derivante}}
+
+{ "pacienteDni": "28999444" }
+
+### aprobar hacia un centro con camas → 200
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+Content-Type: application/json
+x-usuario-email: {{receptor}}
+
+{ "centroDestinoId": "{{centroConCamas}}" }
