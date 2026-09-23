@@ -68,3 +68,47 @@ export function rolesQuePuedenRechazar(
   if (estado === "APROBADA") return ["MEDICO_RECEPTOR"];
   return ["MEDICO_DERIVANTE", "MEDICO_RECEPTOR"];
 }
+
+/**
+ * Por qué no se puede aprobar una solicitud, o null si nada lo impide (HU04).
+ *
+ * Devuelve el motivo con sus datos y no un booleano: cada motivo es un 409 con un
+ * mensaje distinto, y el de estado tiene que enumerar las transiciones posibles.
+ * La falta de triaje y de camas se chequean aparte: la primera es un dato que
+ * puede no existir y la segunda vive en lib/disponibilidad.ts.
+ */
+export type ImpedimentoAprobacion =
+  | {
+      motivo: "ESTADO_INCOMPATIBLE";
+      estadoActual: EstadoSolicitud;
+      transicionesPosibles: EstadoSolicitud[];
+    }
+  | { motivo: "DESTINO_IGUAL_A_ORIGEN" };
+
+export function impedimentoParaAprobar(params: {
+  estado: EstadoSolicitud;
+  centroOrigenId: string;
+  centroDestinoId: string;
+}): ImpedimentoAprobacion | null {
+  if (!puedeTransicionar(params.estado, "APROBADA")) {
+    return {
+      motivo: "ESTADO_INCOMPATIBLE",
+      estadoActual: params.estado,
+      transicionesPosibles: transicionesPosibles(params.estado),
+    };
+  }
+  if (params.centroOrigenId === params.centroDestinoId) {
+    return { motivo: "DESTINO_IGUAL_A_ORIGEN" };
+  }
+  return null;
+}
+
+/**
+ * Si al rechazar hay que devolver la cama al centro de destino.
+ *
+ * Solo una solicitud APROBADA tiene cama reservada: la aprobación la descontó.
+ * Antes de eso no hay nada que devolver.
+ */
+export function liberaCamaAlRechazar(estado: EstadoSolicitud): boolean {
+  return estado === "APROBADA";
+}

@@ -1,11 +1,10 @@
-import type { EstadoSolicitud, Prisma } from "@prisma/client";
+import type { EstadoSolicitud, Prisma, TipoUnidad } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
   ActualizarSolicitud,
   CrearSolicitud,
 } from "@/lib/schemas/solicitud-traslado";
 import type { CrearEvaluacion } from "@/lib/schemas/evaluacion-triaje";
-import { unidadRequerida } from "@/lib/scoring-hospitales";
 
 /**
  * Capa de consultas.
@@ -28,10 +27,6 @@ const camposSolicitud = {
   estado: true,
   fechaSolicitud: true,
 } satisfies Prisma.SolicitudTrasladoSelect;
-
-/** Estados en los que la solicitud todavía se puede editar o aprobar. */
-export const ESTADOS_EDITABLES: EstadoSolicitud[] = ["PENDIENTE"];
-export const ESTADOS_APROBABLES: EstadoSolicitud[] = ["PENDIENTE", "EVALUANDO"];
 
 export async function listarSolicitudesDelCentro(params: {
   centroSaludId: string;
@@ -88,6 +83,38 @@ export async function obtenerSolicitudDelCentro(
           presionDiastolica: true,
           nivelUrgenciaSugerido: true,
         },
+      },
+    },
+  });
+}
+
+/**
+ * La solicitud tal como la ve un centro que podría recibirla (HU04).
+ *
+ * Además de las solicitudes donde su centro ya está involucrado, el receptor ve
+ * las que todavía no tienen destino asignado: son las que puede aceptar. Sin
+ * esto, `obtenerSolicitudDelCentro` le devolvería null a cualquier derivación
+ * nueva y la aprobación respondería siempre 404.
+ *
+ * Una solicitud ya asignada a otro centro sigue devolviendo null → 404.
+ */
+export async function obtenerSolicitudParaRecepcion(
+  id: string,
+  centroSaludId: string,
+) {
+  return prisma.solicitudTraslado.findFirst({
+    where: {
+      id,
+      OR: [
+        { centroOrigenId: centroSaludId },
+        { centroDestinoId: centroSaludId },
+        { centroDestinoId: null },
+      ],
+    },
+    select: {
+      ...camposSolicitud,
+      evaluacionTriaje: {
+        select: { id: true, nivelUrgenciaSugerido: true },
       },
     },
   });
@@ -165,8 +192,11 @@ export async function listarBitacora(solicitudId: string) {
  * tres cosas ocurren dentro de una transacción: si falla cualquiera, no queda una
  * solicitud aprobada sin cama reservada ni una cama descontada sin aprobación.
  *
- * Las verificaciones previas (estado, existencia de cama, permisos) las hace el
- * route handler antes de llamar acá.
+ * El descuento es condicional (`camasDisponibles > 0`): si entre la verificación
+ * del handler y este punto otro médico tomó la última cama, no se descuenta nada
+ * y se devuelve null. Es el caso de error de H3 — "sin camas en el instante
+ * exacto de la confirmación" — y el handler lo traduce a 409. No es una
+ * excepción: es un resultado posible.
  */
 export async function aprobarSolicitud(params: {
   solicitudId: string;
@@ -176,10 +206,11 @@ export async function aprobarSolicitud(params: {
   const { solicitudId, centroDestinoId, unidadId } = params;
 
   return prisma.$transaction(async (tx) => {
-    await tx.unidadCuidados.update({
-      where: { id: unidadId },
+    const reserva = await tx.unidadCuidados.updateMany({
+      where: { id: unidadId, camasDisponibles: { gt: 0 } },
       data: { camasDisponibles: { decrement: 1 } },
     });
+    if (reserva.count === 0) return null;
 
     return tx.solicitudTraslado.update({
       where: { id: solicitudId },
@@ -190,20 +221,48 @@ export async function aprobarSolicitud(params: {
 }
 
 /**
- * Busca una unidad con cama libre del tipo que necesita el paciente.
+ * Pasa la solicitud a RECHAZADA y, si tenía cama reservada, la devuelve.
  *
- * Devuelve `null` si el centro no tiene ninguna. El handler lo traduce a 409.
+ * Si hay que liberar cama lo decide `liberaCamaAlRechazar` (lib/reglas-solicitud.ts)
+ * y llega acá como parámetro: esta función no decide, ejecuta.
+ *
+ * El cambio de estado es condicional al estado que leyó el handler: si en el
+ * medio alguien la aprobó o la rechazó, no se toca nada y se devuelve null.
  */
-export async function buscarUnidadDisponible(params: {
-  centroSaludId: string;
-  urgencia: Parameters<typeof unidadRequerida>[0];
+export async function rechazarSolicitud(params: {
+  solicitudId: string;
+  estadoLeido: EstadoSolicitud;
+  camaALiberar: { centroSaludId: string; tipo: TipoUnidad } | null;
 }) {
-  return prisma.unidadCuidados.findFirst({
-    where: {
-      centroSaludId: params.centroSaludId,
-      tipo: unidadRequerida(params.urgencia),
-      camasDisponibles: { gt: 0 },
-    },
-    select: { id: true, tipo: true, camasDisponibles: true },
+  const { solicitudId, estadoLeido, camaALiberar } = params;
+
+  return prisma.$transaction(async (tx) => {
+    const cambio = await tx.solicitudTraslado.updateMany({
+      where: { id: solicitudId, estado: estadoLeido },
+      data: { estado: "RECHAZADA" },
+    });
+    if (cambio.count === 0) return null;
+
+    if (camaALiberar) {
+      // No hay @@unique([centroSaludId, tipo]): se devuelve a una sola unidad.
+      const unidad = await tx.unidadCuidados.findFirst({
+        where: {
+          centroSaludId: camaALiberar.centroSaludId,
+          tipo: camaALiberar.tipo,
+        },
+        select: { id: true },
+      });
+      if (unidad) {
+        await tx.unidadCuidados.update({
+          where: { id: unidad.id },
+          data: { camasDisponibles: { increment: 1 } },
+        });
+      }
+    }
+
+    return tx.solicitudTraslado.findUnique({
+      where: { id: solicitudId },
+      select: camposSolicitud,
+    });
   });
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   esTerminal,
+  impedimentoParaAprobar,
+  liberaCamaAlRechazar,
   puedeEditarse,
   puedeTransicionar,
   rolesQuePuedenRechazar,
@@ -79,5 +81,61 @@ describe("rolesQuePuedenRechazar", () => {
   it("nadie puede rechazar un traslado en curso o finalizado", () => {
     expect(rolesQuePuedenRechazar("EN_CURSO")).toEqual([]);
     expect(rolesQuePuedenRechazar("FINALIZADA")).toEqual([]);
+  });
+});
+
+describe("impedimentoParaAprobar", () => {
+  const centros = { centroOrigenId: "origen", centroDestinoId: "destino" };
+
+  it("no hay impedimento si está EVALUANDO y el destino es otro centro", () => {
+    expect(impedimentoParaAprobar({ estado: "EVALUANDO", ...centros })).toBeNull();
+  });
+
+  it("una solicitud ya APROBADA no se aprueba de nuevo, y enumera qué sí se puede", () => {
+    expect(impedimentoParaAprobar({ estado: "APROBADA", ...centros })).toEqual({
+      motivo: "ESTADO_INCOMPATIBLE",
+      estadoActual: "APROBADA",
+      transicionesPosibles: ["EN_CURSO", "RECHAZADA"],
+    });
+  });
+
+  // Borde: PENDIENTE todavía no pasó por el triaje, así que no puede saltar a APROBADA.
+  it("una PENDIENTE no se puede aprobar sin pasar por EVALUANDO", () => {
+    expect(impedimentoParaAprobar({ estado: "PENDIENTE", ...centros })?.motivo).toBe(
+      "ESTADO_INCOMPATIBLE",
+    );
+  });
+
+  it("no se puede derivar al mismo centro de origen", () => {
+    expect(
+      impedimentoParaAprobar({
+        estado: "EVALUANDO",
+        centroOrigenId: "origen",
+        centroDestinoId: "origen",
+      }),
+    ).toEqual({ motivo: "DESTINO_IGUAL_A_ORIGEN" });
+  });
+
+  // Borde: si fallan las dos, gana el estado — es el que explica qué se puede hacer.
+  it("con estado inválido y mismo centro, informa primero el estado", () => {
+    expect(
+      impedimentoParaAprobar({
+        estado: "RECHAZADA",
+        centroOrigenId: "origen",
+        centroDestinoId: "origen",
+      })?.motivo,
+    ).toBe("ESTADO_INCOMPATIBLE");
+  });
+});
+
+describe("liberaCamaAlRechazar", () => {
+  it("devuelve la cama solo si la solicitud estaba APROBADA", () => {
+    expect(liberaCamaAlRechazar("APROBADA")).toBe(true);
+  });
+
+  // Borde: antes de aprobar no se reservó nada, no hay que sumar camas.
+  it("no libera nada si todavía estaba PENDIENTE o EVALUANDO", () => {
+    expect(liberaCamaAlRechazar("PENDIENTE")).toBe(false);
+    expect(liberaCamaAlRechazar("EVALUANDO")).toBe(false);
   });
 });
