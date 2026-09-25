@@ -131,9 +131,13 @@ Esta lista es **igual para todos los proyectos**: no hay que adaptarla, hay que 
 
 ## 8. Integración externa
 
-**Cuál:** Servicio de IA (ej. OpenAI / Claude) o motor de reglas clínico.
+**Cuál:** OpenAI API (`gpt-4o-mini`, endpoint `/v1/chat/completions`). Ver [ADR 0003](./adr/0003-api-externa-triaje.md).
 **Para qué:** Sugerir el nivel de urgencia de la derivación basándose en los signos vitales ingresados.
 **Qué pasa si se cae:** El sistema oculta la sugerencia y obliga al médico derivante a ingresar el nivel de urgencia manualmente.
+
+**Cuál (2):** Evolution API (WhatsApp). Ver [ADR 0004](./adr/0004-notificaciones-whatsapp.md).
+**Para qué:** Notificar al centro de salud correspondiente cuando la IA sugiere o se confirma un traslado.
+**Qué pasa si se cae:** El traslado sigue su curso; la notificación no es bloqueante y queda registrada en `RegistroBitacora`.
 
 ## 9. Fuera de alcance
 
