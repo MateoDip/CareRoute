@@ -46,29 +46,32 @@ disponible y ausencia de trazabilidad del paciente durante el traslado.
 ## 3. Flujo principal
 
 ```
-1. Login  →  el usuario queda asociado a su hospital / centro de salud
+1. Login  →  el usuario queda asociado a su centro de salud
 
-2. Carga del paciente          (HU01)
-   síntomas en texto libre + signos vitales + equipamiento requerido
-   la derivación nace en estado BORRADOR, sin hospital de destino
+2. Carga de la solicitud       (HU01)
+   DNI del paciente + centro de origen (sale de la sesión)
+   la solicitud nace en estado PENDIENTE, sin centro de destino
 
-3. Sugerencia de urgencia IA   (HU02)
-   nivel sugerido (bajo | medio | alto | crítico) + justificación breve
-   el médico acepta o corrige el nivel
+3. Evaluación de triaje + sugerencia IA   (HU02)
+   signos vitales → nivel de urgencia sugerido (bajo | medio | alto | crítico)
+   la solicitud pasa a EVALUANDO
 
-4. Ranking de hospitales       (HU03)
-   scoring = disponibilidad de cama + distancia + match de equipamiento
-   solo hospitales con al menos una cama libre del tipo requerido
+4. Ranking de centros candidatos       (HU03)
+   scoring = disponibilidad de cama del tipo requerido + nivel de urgencia
+   solo centros con al menos una cama libre del tipo requerido
 
-5. Confirmación manual         (HU04 / RF06)
-   el médico elige el destino → BORRADOR pasa a CONFIRMADA
-   se descuenta la cama del hospital receptor
+5. Aprobación manual del receptor      (HU04)
+   el médico receptor del centro destino confirma → EVALUANDO pasa a APROBADA
+   se descuenta la cama del centro receptor
 
 6. Notificación al receptor    (HU06)
    el coordinador prepara cama y equipamiento
 
 7. Seguimiento del traslado    (HU07)
-   CONFIRMADA → EN_CURSO → FINALIZADA, cada cambio registrado con fecha y hora
+   APROBADA → EN_CURSO → FINALIZADA, cada cambio registrado en la bitácora
+
+   En cualquier punto antes de EN_CURSO la solicitud puede pasar a RECHAZADA.
+   Máquina de estados completa en docs/api.md.
 ```
 
 ### Historias de usuario
@@ -91,46 +94,48 @@ completas, las reglas de borrado (`onDelete`) y la justificación de cada índic
 
 ```mermaid
 erDiagram
-    HOSPITAL ||--o{ USUARIO : "emplea"
-    HOSPITAL ||--o{ DERIVACION : "es origen de"
-    HOSPITAL ||--o| DERIVACION : "es destino de"
-    HOSPITAL ||--o{ HOSPITAL_EQUIPAMIENTO : "dispone de"
-    EQUIPAMIENTO ||--o{ HOSPITAL_EQUIPAMIENTO : "está en"
-    EQUIPAMIENTO ||--o{ DERIVACION_EQUIPAMIENTO : "es requerido en"
-    PACIENTE ||--o{ DERIVACION : "genera"
-    USUARIO ||--o{ DERIVACION : "crea"
-    DERIVACION ||--o{ DERIVACION_EQUIPAMIENTO : "requiere"
-    DERIVACION ||--o{ EVENTO_DERIVACION : "registra"
-    DERIVACION ||--o{ NOTIFICACION : "dispara"
-    USUARIO ||--o{ NOTIFICACION : "recibe"
+    CENTRO_SALUD ||--o{ USUARIO : "emplea"
+    CENTRO_SALUD ||--o{ UNIDAD_CUIDADOS : "tiene"
+    CENTRO_SALUD ||--o{ RECURSO_ESPECIALIZADO : "tiene"
+    CENTRO_SALUD ||--o{ SOLICITUD_TRASLADO : "es origen de"
+    CENTRO_SALUD ||--o{ SOLICITUD_TRASLADO : "es destino de"
+    SOLICITUD_TRASLADO ||--o| EVALUACION_TRIAJE : "tiene"
+    SOLICITUD_TRASLADO ||--o{ TRIPULACION_MEDICA : "asigna"
+    SOLICITUD_TRASLADO ||--o{ REGISTRO_BITACORA : "registra"
+    TRIPULACION_MEDICA ||--o{ REGISTRO_BITACORA : "genera"
 ```
 
 Dos decisiones de modelado que se apartan del enunciado original:
 
-- **Los datos clínicos viven en `Derivacion`, no en `Paciente`.** Son datos del episodio: un
-  mismo paciente puede derivarse dos veces con cuadros distintos, y si vivieran en `Paciente`
-  la segunda derivación pisaría a la primera.
-- **`equipamiento_disponible` dejó de ser un string** y se normalizó en un catálogo con dos
-  tablas de relación, porque HU03 exige filtrar hospitales por coincidencia de equipamiento.
+- **No hay entidad `Paciente` propia.** El DNI vive directo en `SolicitudTraslado`, porque los
+  datos clínicos (signos vitales, urgencia) son del episodio, no de la persona: un mismo
+  paciente puede derivarse dos veces con cuadros distintos.
+- **El equipamiento no es un catálogo aparte.** `RecursoEspecializado` cuelga directo de
+  `CentroSalud` (con su tipo y estado operativo), sin tabla de relación intermedia.
+
 
 ## 5. API
 
 Convención: sustantivos en plural, y las transiciones de estado se exponen como
 `POST /{recurso}/{id}/{accion}`, no como un ABM.
 
-| Método y ruta | Qué hace | Rol |
-|---|---|---|
-| `POST /api/derivaciones` | Crea la derivación en estado `BORRADOR` (HU01) | Médico |
-| `GET /api/derivaciones` | Bandeja del usuario: como origen o como destino según su rol | Todos |
-| `POST /api/derivaciones/{id}/triaje` | Pide la sugerencia de urgencia a la IA (HU02) | Médico |
-| `GET /api/hospitales/ranking?derivacionId={id}` | Ranking por scoring (HU03) | Médico |
-| `POST /api/derivaciones/{id}/confirmacion` | `BORRADOR → CONFIRMADA`, descuenta cama y notifica (HU04, HU06) | Médico |
-| `POST /api/derivaciones/{id}/inicio` | `CONFIRMADA → EN_CURSO` (HU07) | Personal de traslado |
-| `POST /api/derivaciones/{id}/finalizacion` | `EN_CURSO → FINALIZADA` (HU07) | Personal de traslado |
-| `PATCH /api/hospitales/{id}/disponibilidad` | Actualiza camas y equipamiento (HU05) | Coordinador |
+| Método y ruta | Qué hace | HU | Rol |
+|---|---|---|---|
+| `GET /api/solicitudes` | Lista las solicitudes del centro del usuario (`?rol=origen\|destino`, `?estado=`) | HU06, HU07 | Autenticado |
+| `POST /api/solicitudes` | Registra una solicitud de traslado. El centro de origen sale de la sesión | HU01 | MEDICO_DERIVANTE |
+| `GET /api/solicitudes/:id` | Ficha de una solicitud con su evaluación de triaje | HU07 | Autenticado del centro involucrado |
+| `PATCH /api/solicitudes/:id` | Corrige datos de la solicitud, solo mientras esté `PENDIENTE` | — | MEDICO_DERIVANTE del origen |
+| `GET /api/solicitudes/:id/bitacora` | Historial de eventos del traslado | HU07 | Autenticado del centro involucrado |
+| `POST /api/solicitudes/:id/evaluacion` | Registra la evaluación de triaje con el nivel de urgencia sugerido por IA | HU02 | MEDICO_DERIVANTE del origen |
+| `GET /api/solicitudes/:id/candidatos` | Ranking de centros candidatos para la derivación | HU03 | Autenticado del centro involucrado |
+| **`POST /api/solicitudes/:id/aprobacion`** | **Confirma la derivación: asigna centro destino, reserva la cama y pasa a `APROBADA`** | **HU04** | **MEDICO_RECEPTOR del destino** |
+| `POST /api/solicitudes/:id/rechazo` | Cancela la derivación (devuelve la cama si estaba `APROBADA`) | spec §6 | según estado, ver `docs/api.md` |
+| `GET /api/centros` | Catálogo de centros con sus unidades y recursos | HU05 | Autenticado |
+| `PATCH /api/unidades/:id` | Actualiza las camas disponibles de una unidad | HU05 | ADMIN o MEDICO_RECEPTOR del centro |
 
 Toda entrada externa se valida con Zod en el servidor antes de tocar la base, sin excepción.
-La tabla completa de permisos por rol está en [`docs/spec.md`](./docs/spec.md).
+El detalle completo de errores, códigos de estado y la máquina de estados de una solicitud
+está en [`docs/api.md`](./docs/api.md). La tabla de permisos por rol está en [`docs/spec.md`](./docs/spec.md).
 
 ## 6. Stack tecnológico
 
