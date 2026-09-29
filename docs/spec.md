@@ -12,95 +12,126 @@
 
 ## 2. Roles
 
+La matriz completa de permisos por endpoint está en [`docs/api.md`](./api.md#matriz-de-permisos).
+
 | Rol | Quién es | Qué puede hacer que el otro no |
 |---|---|---|
-| **Admin** | Encargado de configurar el sistema. | Puede crear/editar `CentroSalud` y dar de alta o baja `Usuario`, asignándole rol y centro. No participa del flujo clínico de derivaciones. |
-| **Médico Derivante** | Profesional en el hospital de origen con un paciente crítico. | Puede crear `SolicitudTraslado` y registrar `EvaluacionTriaje`. |
-| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Puede aprobar o rechazar solicitudes entrantes y actualizar `UnidadCuidados`/`RecursoEspecializado` de su `CentroSalud`. |
+| **Admin** | Encargado de configurar el sistema. | Da de alta, edita y da de baja `CentroSalud`, asigna rol y centro a cada `Usuario`, y puede corregir las camas de cualquier unidad. No participa del flujo clínico de derivaciones. |
+| **Médico Derivante** | Profesional en el hospital de origen con un paciente crítico. | Crea la `SolicitudTraslado`, registra la `EvaluacionTriaje` y elige el centro de destino del ranking. |
+| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Aprueba o rechaza las derivaciones que le propusieron y actualiza las camas de las `UnidadCuidados` de su `CentroSalud`. |
 
 ## 3. Entidades
 
-Los sustantivos que aparecen en las historias de usuario. De acá sale el modelo de datos.
+Los sustantivos que aparecen en las historias de usuario. De acá sale el modelo de datos
+(`prisma/schema.prisma`). Siete entidades del dominio, sin contar `Usuario`.
 
 | Entidad | Qué representa | Se relaciona con |
 |---|---|---|
-| **CentroSalud** | Establecimiento médico con su nivel de complejidad y ubicación geográfica. | UnidadCuidados, Usuario, SolicitudTraslado |
-| **UnidadCuidados** | Áreas de internación específicas (UTI, UCO) y su inventario de camas. | CentroSalud |
-| **RecursoEspecializado** | Equipamiento médico puntual (ej. respiradores) y su estado operativo. | CentroSalud |
-| **SolicitudTraslado** | La derivación central que vincula al centro emisor con el receptor y gestiona su estado. | CentroSalud, Paciente, EvaluacionTriaje |
-| **EvaluacionTriaje** | Registro de signos vitales, scores clínicos (ej. GCS) y el nivel de prioridad asignado. | SolicitudTraslado, Paciente |
-| **TripulacionMedica** | La unidad de transporte física y el personal paramédico asignado al viaje. | SolicitudTraslado |
-| **RegistroBitacora** | Trazabilidad, notas y eventos clínicos cronológicos durante el trayecto físico. | SolicitudTraslado, TripulacionMedica |
+| **CentroSalud** | Establecimiento médico con su nivel de complejidad y ubicación. | Usuario, UnidadCuidados, RecursoEspecializado, SolicitudTraslado |
+| **UnidadCuidados** | Área de internación (UTI, UCO, sala común, guardia) y sus camas libres. | CentroSalud |
+| **RecursoEspecializado** | Equipamiento puntual (respirador, monitor…) y su estado operativo. | CentroSalud |
+| **SolicitudTraslado** | La derivación: vincula al centro de origen con el de destino y lleva el estado. El paciente se identifica por DNI dentro de la solicitud (no hay entidad Paciente: los datos clínicos son del episodio, no de la persona). | CentroSalud (origen y destino), EvaluacionTriaje, AsignacionTripulacion, RegistroBitacora |
+| **EvaluacionTriaje** | Signos vitales, nivel de urgencia y de dónde salió ese nivel (IA o manual). | SolicitudTraslado |
+| **TripulacionMedica** | Ambulancia y paramédico responsable. Hace muchos traslados. | AsignacionTripulacion, RegistroBitacora |
+| **AsignacionTripulacion** | Qué tripulación se asignó a qué traslado y cuándo. Es la tabla intermedia de la N-N. | SolicitudTraslado, TripulacionMedica |
+| **RegistroBitacora** | Eventos cronológicos del trayecto (salida, llegada, complicaciones). | SolicitudTraslado, TripulacionMedica |
 
-### Relaciones y Reglas de Borrado (Actualización Clase 3)
+Además, **Usuario** (email, nombre, rol y centro) pertenece a un `CentroSalud`; el admin
+puede no tener centro.
 
-*   **Usuario**
-    *   **Relación:** Pertenece a 1 `CentroSalud` (N a 1).
-    *   **Regla de borrado:** `Restrict`. No se puede dar de baja un centro de salud si todavía tiene usuarios médicos vinculados a él.
-*   **CentroSalud**
-    *   **Relaciones:** Tiene N `UnidadesCuidados`, N `RecursosEspecializados` y N `SolicitudesTraslado` (1 a N).
-    *   **Reglas de borrado:**
-        *   Hacia Unidades y Recursos: `Cascade`. Si un centro se da de baja del sistema, su inventario físico (camas y equipos) se destruye con él.
-        *   Hacia Solicitudes (Origen/Destino): `Restrict`. El historial de derivaciones de un centro es inmutable y no se puede borrar en cascada.
-*   **SolicitudTraslado**
-    *   **Relaciones:** Tiene 1 `EvaluacionTriaje` (1 a 1), N `TripulacionesMedicas` y N `RegistrosBitacora` (1 a N).
-    *   **Reglas de borrado:**
-        *   Hacia Evaluación Triaje: `Cascade`. Si la solicitud se cancela y elimina antes de procesarse, sus signos vitales sugeridos pierden sentido.
-        *   Hacia Tripulación y Bitácora: `Restrict`. Nunca se puede borrar en cascada el historial de eventos, complicaciones clínicas ni los viajes realizados.
-*   **RegistroBitacora**
-    *   **Relaciones:** Pertenece a 1 `SolicitudTraslado` y 1 `TripulacionMedica` (N a 1).
-    *   **Regla de borrado:** `Restrict`. Actúa como un log de auditoría intocable. No se borra nunca.
+Todas las tablas tienen `creadaEn` y `actualizadaEn` (salvo `RegistroBitacora`, que es un
+log inmutable y solo tiene `creadaEn`, y `SolicitudTraslado`, donde `fechaSolicitud`
+cumple el papel de `creadaEn`).
+
+### Cardinalidades y reglas de borrado
+
+| Relación | Cardinalidad | `onDelete` | Por qué |
+|---|---|---|---|
+| CentroSalud → Usuario | 1 a N (el centro es opcional) | `Restrict` | No se da de baja un centro con médicos vinculados: primero se los reasigna. |
+| CentroSalud → UnidadCuidados | 1 a N | `Cascade` | Si el centro se da de baja, su inventario de camas se va con él. |
+| CentroSalud → RecursoEspecializado | 1 a N | `Cascade` | Ídem, el equipamiento. |
+| CentroSalud → SolicitudTraslado (origen) | 1 a N | `Restrict` | El historial de derivaciones es inmutable. |
+| CentroSalud → SolicitudTraslado (destino) | 1 a N (el destino es opcional hasta que se elige) | `Restrict` | Ídem. |
+| SolicitudTraslado → EvaluacionTriaje | 1 a 1 (opcional) | `Cascade` | Sin la solicitud, sus signos vitales pierden sentido. |
+| **SolicitudTraslado ↔ TripulacionMedica** | **N a N**, vía `AsignacionTripulacion` | `Restrict` en los dos lados | Una tripulación hace muchos traslados y un traslado largo puede necesitar más de una (relevo). La intermedia es entidad porque tiene dato propio: `asignadaEn`. Nunca se borra un viaje realizado. |
+| SolicitudTraslado → RegistroBitacora | 1 a N | `Restrict` | Log de auditoría: no se borra nunca. |
+| TripulacionMedica → RegistroBitacora | 1 a N (opcional) | `Restrict` | Ídem. |
+
+Índices: toda FK por la que se filtra tiene `@@index` (`centroSaludId`, `centroOrigenId`,
+`centroDestinoId`, `solicitudId`, `tripulacionMedicaId`). La clave compuesta de
+`AsignacionTripulacion` ya indexa `solicitudId`.
 
 ## 4. Historias de usuario
 
-Formato: **Como** <rol>, **quiero** <acción>, **para** <beneficio>.
-Cada historia lleva su criterio de aceptación: cómo se verifica que está terminada.
+Formato: **Como** <rol>, **quiero** <acción>, **para** <beneficio>. Cada historia lleva
+sus criterios de aceptación con el formato *Dado / Cuando / Entonces* y al menos un caso
+de error. Los identificadores (HU01…HU07) son los que usan el código, `docs/api.md` y el
+README.
 
-### H1 — Iniciar solicitud de derivación
-**Como** médico del centro emisor, **quiero** registrar los datos de filiación y signos vitales del paciente, **para** iniciar el proceso de derivación con la información clínica completa.
+### HU01 — Iniciar solicitud de derivación
+**Como** médico derivante, **quiero** registrar al paciente y sus signos vitales, **para** iniciar la derivación con la información clínica completa.
 
-Criterios de aceptación:
-- [x] Dado que el médico ingresa los datos requeridos en el formulario de triaje, cuando lo envía, entonces el sistema genera una `SolicitudTraslado` vinculada a su `CentroSalud` de origen.
-- [x] Caso de error: cuando el médico intenta avanzar sin completar un campo obligatorio (ej. presión arterial), el sistema bloquea la acción, señala visualmente el campo faltante y mantiene la información ya cargada.
+- [x] **Dado** que el médico tiene centro asignado, **cuando** envía el DNI del paciente, **entonces** el sistema crea una `SolicitudTraslado` `PENDIENTE` vinculada a su `CentroSalud` de origen.
+- [x] **Caso de error:** **dado** que falta un campo obligatorio (ej. presión arterial), **cuando** intenta avanzar, **entonces** el sistema bloquea la acción, señala el campo faltante y mantiene lo ya cargado.
 
-### H2 — Sugerencia de urgencia por IA
-**Como** médico del centro derivante, **quiero** que el sistema sugiera un nivel de urgencia basado en los parámetros clínicos, **para** tomar una decisión de derivación más rápida y fundamentada.
+### HU02 — Sugerencia de urgencia por IA
+**Como** médico derivante, **quiero** que el sistema sugiera un nivel de urgencia a partir de los signos vitales, **para** decidir la derivación más rápido.
 
-Criterios de aceptación:
-- [x] Dado que el médico completó la `EvaluacionTriaje`, cuando el sistema procesa los signos vitales, entonces se despliega en pantalla un nivel de urgencia sugerido (Bajo, Medio, Alto, Crítico) en menos de 10 segundos.
-- [x] Caso de error: cuando el servicio de IA falla o demora más de 10 segundos, el sistema permite al médico seleccionar el nivel de urgencia manualmente advirtiendo sobre la falta de conexión.
+- [x] **Dado** que el médico cargó los signos vitales, **cuando** los envía sin elegir nivel, **entonces** el sistema muestra un nivel sugerido (Bajo, Medio, Alto, Crítico) en menos de 10 segundos y registra que lo sugirió la IA.
+- [x] **Caso de error:** **dado** que el servicio de IA falla o demora más de 10 segundos, **cuando** el médico envía la evaluación, **entonces** el sistema le avisa que no hubo conexión y le permite elegir el nivel manualmente, sin perder los signos vitales.
 
-### H3 — Confirmar derivación al hospital receptor
-**Como** médico del centro derivante, **quiero** confirmar manualmente el hospital de destino desde el ranking de recomendaciones, **para** asegurar que la decisión final la tome un profesional basándose en la disponibilidad real.
+### HU03 — Ver ranking de hospitales
+**Como** médico derivante, **quiero** ver los hospitales que pueden recibir al paciente ordenados por conveniencia, **para** elegir el destino sin llamar uno por uno.
 
-Criterios de aceptación:
-- [x] Dado que el médico visualiza el ranking de hospitales aptos, cuando selecciona un `CentroSalud` de destino y confirma, entonces la `SolicitudTraslado` cambia a estado "Aprobada" y se registra la fecha y hora de la decisión.
-- [x] Caso de error: cuando la `UnidadCuidados` del destino se queda sin camas disponibles en el instante exacto de la confirmación, el sistema cancela la asignación, muestra una alerta de "Capacidad agotada" y recarga el ranking actualizado.
+- [x] **Dado** que la solicitud tiene triaje, **cuando** el médico pide el ranking, **entonces** ve solo los centros (distintos del suyo) con al menos una cama libre del tipo que requiere la urgencia, ordenados por puntaje.
+- [x] **Caso de error:** **dado** que la solicitud todavía no tiene triaje, **cuando** pide el ranking, **entonces** el sistema le indica que primero tiene que registrar la evaluación.
 
-### H4 — Actualizar disponibilidad de camas
-**Como** médico receptor de una unidad de cuidados, **quiero** actualizar la cantidad de camas disponibles en tiempo real, **para** que los centros derivantes sepan si pueden enviarme pacientes.
+### HU04 — Confirmar la derivación
+**Como** médico derivante, **quiero** elegir el destino desde el ranking y que el receptor de ese hospital lo confirme, **para** que la decisión final la tomen profesionales con la disponibilidad real.
 
-Criterios de aceptación:
-- [x] Dado que un paciente es dado de alta o ingresa, cuando el médico receptor modifica el número de camas en el sistema, entonces la capacidad de la `UnidadCuidados` se actualiza inmediatamente en el ranking de derivaciones.
-- [x] Caso de error: cuando el médico intenta ingresar un número negativo de camas, el sistema rechaza el guardado y muestra un mensaje indicando que el valor debe ser cero o mayor.
+- [x] **Dado** que el derivante eligió un centro del ranking, **cuando** el médico receptor de ese centro confirma, **entonces** la solicitud pasa a "Aprobada", se reserva la cama y se registra la fecha y hora de la decisión.
+- [x] **Caso de error:** **dado** que la unidad requerida del destino se queda sin camas en el instante exacto de la elección o de la confirmación, **cuando** se intenta, **entonces** el sistema cancela la asignación, muestra "Capacidad agotada" con los tipos de cama que sí quedan y recarga el ranking.
+
+### HU05 — Actualizar disponibilidad de camas
+**Como** médico receptor, **quiero** actualizar las camas disponibles de mi unidad, **para** que los centros derivantes sepan si pueden enviarme pacientes.
+
+- [x] **Dado** que un paciente ingresa o es dado de alta, **cuando** el receptor modifica el número de camas, **entonces** la capacidad de la `UnidadCuidados` se actualiza de inmediato en el ranking.
+- [x] **Caso de error:** **dado** que el receptor ingresa un número negativo, **cuando** guarda, **entonces** el sistema rechaza el cambio e indica que el valor debe ser cero o mayor.
+
+### HU06 — Recibir notificación de traslado
+**Como** médico receptor, **quiero** ver las derivaciones que me propusieron y las que ya aprobé, **para** preparar cama y equipamiento a tiempo.
+
+- [x] **Dado** que un derivante eligió mi centro, **cuando** abro mis derivaciones entrantes, **entonces** la veo como pendiente de respuesta; y una vez aprobada, como traslado a preparar.
+- [x] **Caso de error:** **dado** que la derivación fue asignada a otro centro, **cuando** intento abrirla por su id, **entonces** el sistema responde que no existe (no revela derivaciones ajenas).
+
+### HU07 — Seguir el estado del traslado
+**Como** médico del centro de origen o de destino, **quiero** ver el estado de la derivación, la tripulación asignada y su bitácora, **para** saber en qué punto está el traslado.
+
+- [x] **Dado** que mi centro es origen o destino, **cuando** abro la solicitud, **entonces** veo su estado, el triaje, la tripulación asignada y los eventos de bitácora en orden.
+- [x] **Caso de error:** **dado** que la solicitud es de otro centro, **cuando** intento abrirla, **entonces** el sistema responde que no existe.
 
 ## 5. Flujo principal
 
-El recorrido completo, paso a paso, del flujo que da valor al sistema (no un ABM).
+El recorrido que da valor al sistema (no un ABM):
 
-1. El Médico Derivante ingresa los datos del paciente y sus signos vitales (`EvaluacionTriaje`).
-2. El sistema sugiere un nivel de urgencia y muestra un ranking de `CentroSalud` con capacidad en sus `UnidadCuidados`.
-3. El Médico Derivante selecciona el centro destino y confirma la `SolicitudTraslado`.
-4. El Médico Receptor recibe la alerta y aprueba la solicitud.
-5. Se asigna una `TripulacionMedica` y comienza el traslado registrando eventos en el `RegistroBitacora`.
+1. El **médico derivante** crea la `SolicitudTraslado` con el DNI del paciente (HU01).
+2. Carga los signos vitales; la IA sugiere el nivel de urgencia o el médico lo elige a mano (HU02). La solicitud pasa a `EVALUANDO`.
+3. El sistema muestra el ranking de centros con cama del tipo requerido (HU03).
+4. El derivante **elige el destino** del ranking (HU04).
+5. El **médico receptor** de ese centro la ve entre sus entrantes (HU06) y **la aprueba**: se reserva la cama, pasa a `APROBADA` y queda la fecha y hora (HU04).
+6. Se asigna una `TripulacionMedica` y el traslado se sigue por su estado y la bitácora (HU07).
+
+Antes de `EN_CURSO`, cualquiera de los dos médicos puede rechazar la derivación, con la restricción de la regla 3 de la sección 6.
 
 ## 6. Reglas de negocio
 
 Las restricciones que **no** son obvias y que la IA no puede adivinar. Estas son las que hay que revisar a mano.
 
-- Una `SolicitudTraslado` no puede ser enviada a un `CentroSalud` cuya `UnidadCuidados` requerida reporte 0 camas disponibles.
-- La sugerencia del nivel de urgencia en el triaje puede ser modificada manualmente por el médico, pero el sistema debe dejar un registro de auditoría de este cambio.
-- Una `SolicitudTraslado` en estado "Aprobada" por el receptor ya no puede ser cancelada unilateralmente por el centro emisor.
+1. Una `SolicitudTraslado` no puede derivarse a un `CentroSalud` cuya `UnidadCuidados` requerida (según la urgencia: Crítico/Alto → UTI, Medio → UCO, Bajo → sala común) tenga 0 camas disponibles. Tampoco al mismo centro de origen.
+2. La sugerencia del nivel de urgencia puede ser reemplazada por el médico, y el sistema debe dejar registro de ese cambio. Hoy se registra si el nivel lo puso la IA o el médico (`origenNivel`); la corrección posterior de un nivel ya sugerido queda pendiente (ADR 0002).
+3. Una `SolicitudTraslado` "Aprobada" ya no puede cancelarla el centro emisor: solo el receptor, que es quien reservó la cama. Al rechazarla, la cama vuelve al centro.
+4. Un usuario que se registra con Google entra como médico derivante **sin centro** y no puede operar hasta que un admin le asigne centro (y, si corresponde, rol). Nadie puede asignarse un rol a sí mismo, y un admin no puede quitarse su propio rol.
+5. No se puede dar de baja un centro que tenga usuarios o derivaciones (el historial es inmutable).
 
 ## 7. Requisitos no funcionales
 
@@ -131,13 +162,26 @@ Esta lista es **igual para todos los proyectos**: no hay que adaptarla, hay que 
 
 ## 8. Integración externa
 
-**Cuál:** OpenAI API (`gpt-4o-mini`, endpoint `/v1/chat/completions`). Ver [ADR 0003](./adr/0003-api-externa-triaje.md).
-**Para qué:** Sugerir el nivel de urgencia de la derivación basándose en los signos vitales ingresados.
-**Qué pasa si se cae:** El sistema oculta la sugerencia y obliga al médico derivante a ingresar el nivel de urgencia manualmente.
+### 8.1 OpenAI — sugerencia de urgencia (implementada, clase 7)
 
-**Cuál (2):** Evolution API (WhatsApp). Ver [ADR 0004](./adr/0004-notificaciones-whatsapp.md).
-**Para qué:** Notificar al centro de salud correspondiente cuando la IA sugiere o se confirma un traslado.
-**Qué pasa si se cae:** El traslado sigue su curso; la notificación no es bloqueante y queda registrada en `RegistroBitacora`.
+**Cuál:** OpenAI API, `POST /v1/chat/completions`, modelo `gpt-4o-mini` con Structured Outputs. Ver [ADR 0003](./adr/0003-api-externa-triaje.md).
+**Para qué:** Sugerir el nivel de urgencia (BAJO, MEDIO, ALTO, CRÍTICO) a partir de los signos vitales de la `EvaluacionTriaje` (HU02). Solo viajan los tres signos vitales: nunca el DNI ni otro dato que identifique al paciente.
+**Dónde vive:** `lib/servicios/openai.ts`, único archivo que conoce la URL y la credencial (`OPENAI_API_KEY`, solo servidor). Timeout de 8 s, para cumplir los 10 s de RNF01 con margen.
+
+**Qué pasa si falla** (clave inválida, cuota agotada, OpenAI caído o más de 8 s sin responder):
+
+| Operación afectada | Esencial o accesoria | Qué hace el sistema | Qué ve el usuario |
+|---|---|---|---|
+| `POST /api/solicitudes/:id/evaluacion` **sin** nivel manual | **Esencial**: sin nivel no hay evaluación que guardar | Llama a OpenAI **antes** de guardar. Si falla, responde `502` y no guarda nada: la solicitud sigue `PENDIENTE`, sin evaluación. Loguea el error del proveedor con el id de la solicitud | "No pudimos obtener la sugerencia de urgencia: el servicio de IA no respondió. Elegí el nivel manualmente y volvé a enviar la evaluación." + la lista de niveles para elegir |
+| `POST /api/solicitudes/:id/evaluacion` **con** nivel manual | No usa el servicio | Guarda con el nivel que eligió el médico (caso de error de HU02) | La evaluación registrada, con `origenNivel: "MANUAL"` |
+| Resto de la API (ranking, aprobación, rechazo, disponibilidad) | No usan el servicio | Funcionan igual | Nada distinto |
+
+### 8.2 Evolution API (WhatsApp) — notificaciones (pendiente)
+
+**Cuál:** Evolution API. Ver [ADR 0004](./adr/0004-notificaciones-whatsapp.md).
+**Para qué:** Avisar al centro de destino cuando el derivante lo elige (HU06).
+**Qué pasa si se cae:** Es **accesoria**: se llama **después** de asignar el destino, la asignación queda hecha igual y la respuesta es `200`. El receptor se entera por el listado (`GET /api/solicitudes?rol=destino&estado=EVALUANDO`).
+**Estado:** no implementada. Necesita la migración que agrega `telefonoNotificacion` a `CentroSalud` (ADR 0004).
 
 ## 9. Fuera de alcance
 

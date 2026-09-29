@@ -1,6 +1,6 @@
 # ADR 0005 — Autenticación con Supabase Auth (Google)
 
-**Estado:** propuesta
+**Estado:** aceptada
 **Fecha:** 2026-09-28
 **Decide:** Equipo (Mateo Duran, Nicolas Censi, Mateo Dip, Fernando Almansa)
 
@@ -30,7 +30,7 @@ real, sin guardar contraseñas propias, y decidir de dónde sale el rol de cada 
    Supabase con `supabase.auth.getUser()` desde el servidor. No se confía en el estado
    del navegador ni en un usuario "logueado" solo en la pantalla.
 3. **El rol y el centro se leen de la tabla `Usuario`, no del token.** El token de
-   Supabase solo trae la identidad (el mail); `getSesion` busca a esa persona en
+   Supabase solo trae la identidad (el mail); `obtenerUsuario` busca a esa persona en
    `Usuario` por mail en cada request. Cambiar un rol o un centro tiene efecto
    inmediato, sin obligar a volver a entrar. A cambio, cada request hace una consulta.
 4. **Rol al registrarse:** el primer login crea el `Usuario` con rol `MEDICO_DERIVANTE`
@@ -43,12 +43,16 @@ real, sin guardar contraseñas propias, y decidir de dónde sale el rol de cada 
 - Se instalan `@supabase/supabase-js` y `@supabase/ssr`. Se reutilizan las variables
   `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`; el ID de cliente y el
   secreto de Google se cargan en el panel de Supabase, no en el repo.
-- Un usuario logueado pero sin centro asignado no puede operar. Hoy `getSesion`
-  devuelve `null` en ese caso, que se traduce en 401; hay que distinguirlo, porque la
-  persona sí está autenticada (corresponde un 403 con un mensaje claro).
-- `lib/sesion.ts` deja de leer el header de prueba, y los `TODO (clase 6)` de los
-  handlers y de `docs/api.http` se reemplazan por la sesión real.
+- Un usuario logueado pero sin centro asignado no puede operar en el flujo clínico:
+  `requerirUsuarioConCentro` lanza `SinCentroAsignado` y responde 403 con un mensaje
+  que le dice que se lo pida a un admin (no 401: la persona sí está autenticada). El
+  admin se lo asigna con `PATCH /api/usuarios/:id`.
+- El contrato de la clase 6 vive en `lib/auth.ts` (`obtenerUsuario`, `requerirUsuario`,
+  `NoAutenticado`, `NoAutorizado`) y las excepciones las traduce `responderError`
+  (`lib/errores.ts`). El header de prueba `x-usuario-email` ya no existe;
+  `docs/api.http` usa la cookie de sesión.
 - Si Supabase o Google no responden, nadie puede iniciar sesión. Los usuarios que ya
   tienen una sesión vigente siguen operando hasta que venza.
-- Cambiar de proveedor de identidad más adelante toca `lib/auth.ts` y `lib/sesion.ts`,
-  no los handlers ni las consultas de `lib/db/`.
+- Cambiar de proveedor de identidad más adelante toca `lib/auth.ts` y
+  `lib/supabase-server.ts`, no los handlers ni las consultas de `lib/db/`.
+- La decisión de dónde vive el rol (token o base) está en el ADR 0006.

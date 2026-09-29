@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  // Cambiar en la clase 1 por el nombre real del sistema.
-  title: "Proyecto MDW 2026",
-  description: "Sistema desarrollado en Metodologías de Desarrollo Web — UAI",
+  title: "CareRoute",
+  description: "Coordinación inter-hospitalaria y triaje de traslados críticos",
 };
 
 export default function RootLayout({

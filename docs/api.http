@@ -1,296 +1,328 @@
 ###############################################################################
 # CareRoute — pruebas de la API sin interfaz
 #
-# Se corre con la extensión "REST Client" de VS Code (humao.rest-client).
-# Cada bloque que empieza con ### es un pedido independiente: aparece un botón
-# "Send Request" arriba y el resultado se abre al costado.
+# Se corre con la extensión "REST Client" de VS Code (humao.rest-client). Cada
+# bloque que empieza con ### es un pedido: aparece "Send Request" arriba.
 #
-# LO IMPORTANTE ES EL STATUS CODE, no solo el body. Un 500 donde debería haber un
-# 400 es un error silencioso: la respuesta "parece" un error y en realidad es un bug.
+# LO IMPORTANTE ES EL STATUS CODE. Cada request tiene el esperado en su título.
+# Un 500 donde debería haber un 409 es un bug aunque "parezca" un error.
 #
-# La base es compartida con el resto del equipo: los POST dejan filas reales. Por eso
-# los DNI de prueba empiezan con 99. Para limpiar: npm run db:seed
+# ANTES DE EMPEZAR
+#  1. `npm run db:seed` — deja cada dato en el estado que esperan estas pruebas.
+#     Con SEED_EMAIL_ADMIN / _DERIVANTE / _RECEPTOR en .env.local, el seed les
+#     da ese rol y centro a esos mails (tienen que ser cuentas de Google reales).
+#  2. Iniciar sesión con Google en {{base}} con cada una de esas cuentas y copiar
+#     la cookie sb-...-auth-token (DevTools → Application → Cookies) en
+#     docs/.env, siguiendo docs/.env.example. docs/.env no se commitea.
+#  3. Correr el archivo en orden: algunas requests cambian el estado de otras.
+#     Para volver a empezar: npm run db:seed.
 ###############################################################################
 
 @base = http://localhost:3000
 # Para probar contra producción, comentá la línea de arriba y descomentá esta:
-# @base = https://care-route.vercel.app
+# @base = https://care-route-beta.vercel.app
 
-# Identidades del seed. TODO (clase 6): esto se reemplaza por Supabase Auth.
-@derivante = derivante@heca.gov.ar
-@receptor = receptor@centenario.gov.ar
-@receptorOrigen = receptor@heca.gov.ar
-@receptorSinCamas = receptor@sincamas.gov.ar
+# Sesiones (cookies de Supabase Auth), una por rol. Salen de docs/.env.
+@sesionDerivante = {{$dotenv SESION_DERIVANTE}}
+@sesionReceptor = {{$dotenv SESION_RECEPTOR}}
+@sesionAdmin = {{$dotenv SESION_ADMIN}}
 
-# Datos del seed (prisma/seed.ts). Después de aprobar o rechazar: npm run db:seed
+# Datos del seed (prisma/seed.ts)
 @solicitudPendiente = solicitud-pendiente-1
 @solicitudEvaluada = solicitud-evaluada-1
+@solicitudPropuesta = solicitud-propuesta-1
 @solicitudAprobada = solicitud-ok-1
 @solicitudDeOtroCentro = solicitud-ajena-1
+@centroOrigen = centro-origen-1
 @centroConCamas = centro-destino-1
 @centroSinCamas = centro-sin-camas-1
-@centroOrigen = centro-origen-1
-@unidadUti = unidad-destino-uti
+@unidadUtiReceptor = unidad-destino-uti
+@unidadDeOtroCentro = unidad-origen-uti
 
 
 ###############################################################################
-# GET /api/solicitudes
+# CLASE 6 — Las tres pruebas de autorización (local Y producción)
 ###############################################################################
-
-### Éxito → 200, array de solicitudes del centro
-GET {{base}}/api/solicitudes
-x-usuario-email: {{derivante}}
-
-### Filtrada por rol y estado → 200. Esto es HU06: lo que tiene que preparar el receptor
-GET {{base}}/api/solicitudes?rol=destino&estado=APROBADA
-x-usuario-email: {{receptor}}
-
-### Filtro inválido → 400
-GET {{base}}/api/solicitudes?estado=INVENTADO
-x-usuario-email: {{derivante}}
 
 ### Sin sesión → 401
 GET {{base}}/api/solicitudes
 
+### Rol incorrecto: el derivante intenta aprobar → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/aprobacion
+Cookie: {{sesionDerivante}}
+
+### Recurso ajeno: solicitud de otro centro → 404 (no 200 con datos, no 403)
+GET {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}
+Cookie: {{sesionDerivante}}
+
+### Usuario recién registrado, sin centro → 403 "Pedíselo a un administrador"
+### (entrá con una cuenta de Google que no esté en el seed y usá su cookie)
+# GET {{base}}/api/solicitudes
+# Cookie: sb-...-auth-token=...
+
+### El admin no participa del flujo clínico → 403
+GET {{base}}/api/solicitudes
+Cookie: {{sesionAdmin}}
+
 
 ###############################################################################
-# POST /api/solicitudes
+# GET /api/solicitudes   (HU06, HU07)
 ###############################################################################
 
-### Éxito → 201. Copiá el "id" de la respuesta para los pedidos de más abajo
+### Éxito → 200, solicitudes del centro del derivante
+GET {{base}}/api/solicitudes
+Cookie: {{sesionDerivante}}
+
+### HU06 del receptor: lo que le propusieron y tiene que responder → 200
+GET {{base}}/api/solicitudes?rol=destino&estado=EVALUANDO
+Cookie: {{sesionReceptor}}
+
+### Filtro inválido → 400
+GET {{base}}/api/solicitudes?estado=INVENTADO
+Cookie: {{sesionDerivante}}
+
+
+###############################################################################
+# POST /api/solicitudes   (HU01)
+###############################################################################
+
+### Éxito → 201. Guarda el id para la sección de la clase 7
+# @name nueva
 POST {{base}}/api/solicitudes
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "99000001"
-}
+{ "pacienteDni": "99700001" }
+
+### Campos inyectados → 201, pero Zod descarta "estado" y "centroOrigenId":
+### la respuesta tiene que mostrar PENDIENTE y centro-origen-1
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "pacienteDni": "99700002", "estado": "APROBADA", "centroOrigenId": "centro-destino-1" }
 
 ### DNI inválido → 400
 POST {{base}}/api/solicitudes
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "abc"
-}
+{ "pacienteDni": "abc" }
 
-### Intento de inyectar campos que no le corresponden al cliente → 201,
-### pero Zod descarta "estado" y "centroOrigenId": la solicitud se crea PENDIENTE
-### y en el centro del usuario de la sesión. Verificá eso en la respuesta.
+### DNI faltante → 400
 POST {{base}}/api/solicitudes
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "99000002",
-  "estado": "APROBADA",
-  "centroOrigenId": "centro-destino-1"
-}
+{}
 
-### Rol incorrecto → 403
+### Rol incorrecto: el receptor no crea solicitudes → 403
 POST {{base}}/api/solicitudes
 Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionReceptor}}
 
-{
-  "pacienteDni": "99000003"
-}
-
-### Sin sesión → 401
-POST {{base}}/api/solicitudes
-Content-Type: application/json
-
-{
-  "pacienteDni": "99000004"
-}
+{ "pacienteDni": "99700003" }
 
 
 ###############################################################################
-# GET /api/solicitudes/:id
+# GET / PATCH /api/solicitudes/:id
 ###############################################################################
 
-### Éxito → 200
-GET {{base}}/api/solicitudes/solicitud-pendiente-1
-x-usuario-email: {{derivante}}
+### Ficha con triaje y tripulaciones (N-N) → 200
+GET {{base}}/api/solicitudes/{{solicitudAprobada}}
+Cookie: {{sesionDerivante}}
 
 ### No existe → 404
 GET {{base}}/api/solicitudes/no-existe
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-### Sin sesión → 401
-GET {{base}}/api/solicitudes/solicitud-pendiente-1
-
-
-###############################################################################
-# PATCH /api/solicitudes/:id
-###############################################################################
-
-### Éxito → 200 (la solicitud está PENDIENTE)
-PATCH {{base}}/api/solicitudes/solicitud-pendiente-1
+### Corregir DNI de una PENDIENTE → 200
+PATCH {{base}}/api/solicitudes/{{solicitudPendiente}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "99887766"
-}
+{ "pacienteDni": "99887766" }
 
 ### Body inválido → 400
-PATCH {{base}}/api/solicitudes/solicitud-pendiente-1
+PATCH {{base}}/api/solicitudes/{{solicitudPendiente}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "1"
-}
+{ "pacienteDni": "1" }
 
-### Estado no editable → 409 (solicitud-ok-1 está APROBADA)
-PATCH {{base}}/api/solicitudes/solicitud-ok-1
+### Ya no está PENDIENTE → 409 + estadoActual
+PATCH {{base}}/api/solicitudes/{{solicitudEvaluada}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "pacienteDni": "99112233"
-}
+{ "pacienteDni": "99112233" }
 
 
 ###############################################################################
 # POST /api/solicitudes/:id/evaluacion   (HU02)
 ###############################################################################
 
-### Éxito → 201. Usá el id de una solicitud recién creada, sin triaje todavía
-POST {{base}}/api/solicitudes/PEGAR_ID_ACA/evaluacion
-Content-Type: application/json
-x-usuario-email: {{derivante}}
-
-{
-  "frecuenciaCardiaca": 130,
-  "presionSistolica": 85,
-  "presionDiastolica": 55,
-  "nivelUrgenciaSugerido": "CRITICO"
-}
-
-### Signos vitales fuera de rango → 400
+### Signos fuera de rango → 400
 POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "frecuenciaCardiaca": 9000,
-  "presionSistolica": 85,
-  "presionDiastolica": 55,
-  "nivelUrgenciaSugerido": "CRITICO"
-}
+{ "frecuenciaCardiaca": 88, "presionSistolica": 900, "presionDiastolica": 60 }
 
-### Ya tiene evaluación → 409 (solicitud-ok-1 viene con triaje desde el seed)
-POST {{base}}/api/solicitudes/solicitud-ok-1/evaluacion
+### Falta un signo vital → 400
+POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{
-  "frecuenciaCardiaca": 80,
-  "presionSistolica": 120,
-  "presionDiastolica": 80,
-  "nivelUrgenciaSugerido": "MEDIO"
-}
+{ "frecuenciaCardiaca": 88, "presionDiastolica": 60 }
+
+### Ya evaluada (1 a 1) → 409 + estadoActual
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/evaluacion
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "frecuenciaCardiaca": 75, "presionSistolica": 120, "presionDiastolica": 80, "nivelUrgenciaSugerido": "BAJO" }
+
+### Éxito SIN nivel: lo sugiere la IA → 201 + origenNivel "IA"
+POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "frecuenciaCardiaca": 130, "presionSistolica": 85, "presionDiastolica": 50 }
 
 
 ###############################################################################
 # GET /api/solicitudes/:id/candidatos   (HU03)
 ###############################################################################
 
-### Éxito → 200, centros ordenados por puntaje
-GET {{base}}/api/solicitudes/solicitud-ok-1/candidatos
-x-usuario-email: {{derivante}}
+### Ranking → 200, centros con cama UTI, ordenados por puntaje
+GET {{base}}/api/solicitudes/{{solicitudEvaluada}}/candidatos
+Cookie: {{sesionDerivante}}
 
-### Sin evaluación de triaje → 409
-GET {{base}}/api/solicitudes/solicitud-pendiente-1/candidatos
-x-usuario-email: {{derivante}}
+### Sin triaje → 409 (la "nueva" de arriba todavía no fue evaluada)
+GET {{base}}/api/solicitudes/{{nueva.response.body.id}}/candidatos
+Cookie: {{sesionDerivante}}
 
 ### No existe → 404
 GET {{base}}/api/solicitudes/no-existe/candidatos
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
 
 ###############################################################################
-# POST /api/solicitudes/:id/aprobacion   (HU04 — OPERACIÓN CORE)
+# POST /api/solicitudes/:id/destino   (HU04 — el derivante elige del ranking)
 ###############################################################################
 
-# El éxito (201) está en "Camino feliz", al final del archivo: aprueba
-# solicitud-evaluada-1 y cambia su estado, así que va después de los errores.
+### Rol incorrecto: el receptor no elige destino → 403
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "centroDestinoId": "{{centroConCamas}}" }
 
 ### Body inválido → 400
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "" }
+
+### Destino = origen → 409
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "{{centroOrigen}}" }
+
+### Destino sin camas UTI → 409 "Capacidad agotada" + tiposConCamaLibre ["UCO"]
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "{{centroSinCamas}}" }
+
+### Centro de destino inexistente → 404
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "no-existe" }
+
+### Solicitud sin triaje (PENDIENTE) → 409 + transicionesPosibles
+POST {{base}}/api/solicitudes/{{nueva.response.body.id}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "{{centroConCamas}}" }
+
+### Éxito → 200, centroDestinoId asignado, sigue EVALUANDO
+POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/destino
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "centroDestinoId": "{{centroConCamas}}" }
+
+
+###############################################################################
+# POST /api/solicitudes/:id/aprobacion   (HU04 — OPERACIÓN CORE, sin body)
+###############################################################################
+
+### No existe, o no fue propuesta a su centro → 404
+POST {{base}}/api/solicitudes/no-existe/aprobacion
+Cookie: {{sesionReceptor}}
+
+### Éxito → 201: APROBADA, cama reservada y fechaAprobacion registrada
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/aprobacion
+Cookie: {{sesionReceptor}}
+
+### Ya aprobada → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/aprobacion
+Cookie: {{sesionReceptor}}
+
+### Sin cama en el instante exacto → 409 "Capacidad agotada"
+### Para verlo: poné la UTI en 0 y aprobá la que eligió destino más arriba
+PATCH {{base}}/api/unidades/{{unidadUtiReceptor}}
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "camasDisponibles": 0 }
+
+###
 POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
-Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionReceptor}}
 
-{
-  "centroDestinoId": ""
-}
 
-### Rol incorrecto → 403 (el derivante no aprueba)
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
-Content-Type: application/json
-x-usuario-email: {{derivante}}
+###############################################################################
+# POST /api/solicitudes/:id/rechazo   (spec §6)
+###############################################################################
 
-{
-  "centroDestinoId": "{{centroConCamas}}"
-}
-
-### PENDIENTE, sin triaje → 409 + estadoActual + transicionesPosibles
-POST {{base}}/api/solicitudes/{{solicitudPendiente}}/aprobacion
-Content-Type: application/json
-x-usuario-email: {{receptor}}
-
-{
-  "centroDestinoId": "{{centroConCamas}}"
-}
-
-### Ya aprobada → 409 + transicionesPosibles
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/aprobacion
-Content-Type: application/json
-x-usuario-email: {{receptor}}
-
-{
-  "centroDestinoId": "{{centroConCamas}}"
-}
+### El derivante intenta rechazar una APROBADA → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+Cookie: {{sesionDerivante}}
 
 ### No existe → 404
-POST {{base}}/api/solicitudes/no-existe/aprobacion
-Content-Type: application/json
-x-usuario-email: {{receptor}}
+POST {{base}}/api/solicitudes/no-existe/rechazo
+Cookie: {{sesionReceptor}}
 
-{
-  "centroDestinoId": "{{centroConCamas}}"
-}
+### El receptor rechaza la APROBADA → 200: RECHAZADA y la cama UCO vuelve
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+Cookie: {{sesionReceptor}}
+
+### Rechazarla otra vez → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
+Cookie: {{sesionReceptor}}
 
 
 ###############################################################################
 # GET /api/solicitudes/:id/bitacora   (HU07)
 ###############################################################################
 
-### Éxito → 200 (array vacío si todavía no hay eventos registrados)
-GET {{base}}/api/solicitudes/solicitud-ok-1/bitacora
-x-usuario-email: {{derivante}}
-
-### No existe → 404
-GET {{base}}/api/solicitudes/no-existe/bitacora
-x-usuario-email: {{derivante}}
-
-### Sin sesión → 401
-GET {{base}}/api/solicitudes/solicitud-ok-1/bitacora
-
-
-###############################################################################
-# GET /api/centros
-###############################################################################
-
 ### Éxito → 200
-GET {{base}}/api/centros
-x-usuario-email: {{derivante}}
+GET {{base}}/api/solicitudes/{{solicitudAprobada}}/bitacora
+Cookie: {{sesionDerivante}}
 
-### Sin sesión → 401
-GET {{base}}/api/centros
+### De otro centro → 404
+GET {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}/bitacora
+Cookie: {{sesionDerivante}}
 
 
 ###############################################################################
@@ -298,162 +330,178 @@ GET {{base}}/api/centros
 ###############################################################################
 
 ### Éxito → 200
-PATCH {{base}}/api/unidades/{{unidadUti}}
+PATCH {{base}}/api/unidades/{{unidadUtiReceptor}}
 Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionReceptor}}
 
-{
-  "camasDisponibles": 4
-}
+{ "camasDisponibles": 4 }
 
 ### Camas negativas → 400
-PATCH {{base}}/api/unidades/{{unidadUti}}
+PATCH {{base}}/api/unidades/{{unidadUtiReceptor}}
 Content-Type: application/json
-x-usuario-email: {{receptor}}
-
-{
-  "camasDisponibles": -3
-}
-
-### Unidad de otro centro, o inexistente → 404
-PATCH {{base}}/api/unidades/no-existe
-Content-Type: application/json
-x-usuario-email: {{receptor}}
-
-{
-  "camasDisponibles": 2
-}
-###############################################################################
-# POST /api/solicitudes/:id/rechazo   (spec §6)
-###############################################################################
-
-### El derivante intenta rechazar una solicitud ya APROBADA → 403 + rolesHabilitados
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-x-usuario-email: {{derivante}}
-
-### No existe → 404
-POST {{base}}/api/solicitudes/no-existe/rechazo
-x-usuario-email: {{receptor}}
-
-### Sin sesión → 401
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-
-# El éxito (200) y el "ya rechazada" (409) están al final, en "Camino feliz":
-# cambian el estado de solicitud-ok-1.
-
-
-###############################################################################
-# Casos de error del catálogo (docs/api.md → "Los errores, en detalle")
-# Una request por fila. Mirar el status, no el body: un 500 donde iba un 409
-# desde afuera se ve igual de roto, y solo el número los distingue.
-# Correr en orden, después de: npm run db:seed
-###############################################################################
-
-### DNI faltante → 400 (Zod)
-POST {{base}}/api/solicitudes
-Content-Type: application/json
-x-usuario-email: {{derivante}}
-
-{}
-
-### Evaluación con presión fuera de rango fisiológico → 400 (Zod)
-POST {{base}}/api/solicitudes/{{solicitudPendiente}}/evaluacion
-Content-Type: application/json
-x-usuario-email: {{derivante}}
-
-{ "frecuenciaCardiaca": 88, "presionSistolica": 900, "presionDiastolica": 60, "nivelUrgenciaSugerido": "ALTO" }
-
-### Camas negativas → 400 (Zod, caso de error de H4)
-PATCH {{base}}/api/unidades/{{unidadUti}}
-Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionReceptor}}
 
 { "camasDisponibles": -1 }
 
-### Evaluar dos veces la misma solicitud → 409 + estadoActual (relación 1 a 1)
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/evaluacion
+### Unidad de otro centro → 404
+PATCH {{base}}/api/unidades/{{unidadDeOtroCentro}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionReceptor}}
 
-{ "frecuenciaCardiaca": 75, "presionSistolica": 120, "presionDiastolica": 80, "nivelUrgenciaSugerido": "BAJO" }
+{ "camasDisponibles": 2 }
 
-### Corregir una solicitud que ya no está PENDIENTE → 409 + estadoActual
-PATCH {{base}}/api/solicitudes/{{solicitudEvaluada}}
+### Rol incorrecto: el derivante no actualiza camas → 403
+PATCH {{base}}/api/unidades/{{unidadDeOtroCentro}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionDerivante}}
 
-{ "pacienteDni": "99111222" }
+{ "camasDisponibles": 2 }
 
-### Pedir candidatos sin evaluación de triaje → 409 + estadoActual
-GET {{base}}/api/solicitudes/{{solicitudPendiente}}/candidatos
-x-usuario-email: {{derivante}}
 
-### Aprobar hacia un centro sin camas UTI → 409 + tipoRequerido + tiposConCamaLibre (H3)
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+###############################################################################
+# CentroSalud — CRUD completo (ADMIN)
+###############################################################################
+
+### Listar (cualquier usuario logueado) → 200
+GET {{base}}/api/centros
+Cookie: {{sesionDerivante}}
+
+### Crear → 201
+# @name centroNuevo
+POST {{base}}/api/centros
 Content-Type: application/json
-x-usuario-email: {{receptorSinCamas}}
+Cookie: {{sesionAdmin}}
 
-{ "centroDestinoId": "{{centroSinCamas}}" }
+{ "nombre": "Centro de Prueba", "nivelComplejidad": "BAJA", "ubicacion": "Calle Falsa 123" }
 
-### Aprobar hacia el mismo centro de origen → 409
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+### Crear con datos inválidos → 400
+POST {{base}}/api/centros
 Content-Type: application/json
-x-usuario-email: {{receptorOrigen}}
+Cookie: {{sesionAdmin}}
 
-{ "centroDestinoId": "{{centroOrigen}}" }
+{ "nombre": "X", "nivelComplejidad": "ENORME", "ubicacion": "" }
 
-### Aprobar hacia un centro que no es el propio → 403
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+### Crear siendo derivante → 403
+POST {{base}}/api/centros
 Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionDerivante}}
 
-{ "centroDestinoId": "{{centroSinCamas}}" }
+{ "nombre": "Centro de Prueba", "nivelComplejidad": "BAJA", "ubicacion": "Calle Falsa 123" }
 
-### Aprobar una solicitud ya aprobada → 409 + estadoActual + transicionesPosibles
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/aprobacion
+### Ver → 200
+GET {{base}}/api/centros/{{centroNuevo.response.body.id}}
+Cookie: {{sesionDerivante}}
+
+### Ver inexistente → 404
+GET {{base}}/api/centros/no-existe
+Cookie: {{sesionDerivante}}
+
+### Editar → 200
+PATCH {{base}}/api/centros/{{centroNuevo.response.body.id}}
 Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionAdmin}}
 
-{ "centroDestinoId": "{{centroConCamas}}" }
+{ "nivelComplejidad": "MEDIA" }
 
-### El derivante intenta rechazar una solicitud ya APROBADA → 403 + rolesHabilitados (spec §6)
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-x-usuario-email: {{derivante}}
-
-### Id inexistente → 404
-GET {{base}}/api/solicitudes/no-existe-este-id
-x-usuario-email: {{derivante}}
-
-### Solicitud de otro centro → 404, no 403 (no se filtra qué ids son reales)
-GET {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}
-x-usuario-email: {{derivante}}
-
-### Sin header de sesión → 401
-GET {{base}}/api/solicitudes
-
-### ---------------------------------------------------------------------------
-### Camino feliz, para confirmar que las reglas no rompieron lo que funcionaba
-### ---------------------------------------------------------------------------
-
-### Crear solicitud → 201
-POST {{base}}/api/solicitudes
+### Editar sin campos → 400
+PATCH {{base}}/api/centros/{{centroNuevo.response.body.id}}
 Content-Type: application/json
-x-usuario-email: {{derivante}}
+Cookie: {{sesionAdmin}}
 
-{ "pacienteDni": "99899444" }
+{}
 
-### Aprobar hacia un centro con camas → 201
-POST {{base}}/api/solicitudes/{{solicitudEvaluada}}/aprobacion
+### Borrar un centro con usuarios y derivaciones → 409 + dependencias (Restrict)
+DELETE {{base}}/api/centros/{{centroOrigen}}
+Cookie: {{sesionAdmin}}
+
+### Borrar → 204 (sus unidades y recursos caen en cascada)
+DELETE {{base}}/api/centros/{{centroNuevo.response.body.id}}
+Cookie: {{sesionAdmin}}
+
+### Borrarlo otra vez → 404
+DELETE {{base}}/api/centros/{{centroNuevo.response.body.id}}
+Cookie: {{sesionAdmin}}
+
+
+###############################################################################
+# Usuarios (ADMIN) — cómo un usuario nuevo recibe rol y centro
+###############################################################################
+
+### Listar → 200. Copiá el id del usuario al que querés asignarle rol y centro
+GET {{base}}/api/usuarios
+Cookie: {{sesionAdmin}}
+
+### Listar siendo receptor → 403
+GET {{base}}/api/usuarios
+Cookie: {{sesionReceptor}}
+
+### Asignar rol y centro → 200 (reemplazá PEGAR_ID)
+PATCH {{base}}/api/usuarios/PEGAR_ID
 Content-Type: application/json
-x-usuario-email: {{receptor}}
+Cookie: {{sesionAdmin}}
 
-{ "centroDestinoId": "{{centroConCamas}}" }
+{ "rol": "MEDICO_RECEPTOR", "centroSaludId": "{{centroSinCamas}}" }
 
-### Rechazar la APROBADA desde el receptor → 200. Pasa a RECHAZADA y la cama UCO
-### vuelve al centro destino (se ve en GET /api/centros)
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-x-usuario-email: {{receptor}}
+### Rol inexistente → 400
+PATCH {{base}}/api/usuarios/PEGAR_ID
+Content-Type: application/json
+Cookie: {{sesionAdmin}}
 
-### Rechazarla otra vez → 409 + estadoActual + transicionesPosibles
-POST {{base}}/api/solicitudes/{{solicitudAprobada}}/rechazo
-x-usuario-email: {{receptor}}
+{ "rol": "DIOS" }
+
+### Centro inexistente → 404
+PATCH {{base}}/api/usuarios/PEGAR_ID
+Content-Type: application/json
+Cookie: {{sesionAdmin}}
+
+{ "centroSaludId": "no-existe" }
+
+### El admin se quita el rol a sí mismo → 409 (reemplazá con el id del admin)
+PATCH {{base}}/api/usuarios/ID_DEL_ADMIN
+Content-Type: application/json
+Cookie: {{sesionAdmin}}
+
+{ "rol": "MEDICO_DERIVANTE" }
+
+
+###############################################################################
+# CLASE 7 — Servicio externo (OpenAI) y qué pasa cuando falla   (HU02, spec §8)
+#
+# Se usa la solicitud "nueva" creada al principio (sigue PENDIENTE, sin triaje).
+# Si ya la evaluaste, volvé a correr "POST /api/solicitudes → Éxito".
+###############################################################################
+
+### CREDENCIAL ROTA: cambiá una letra de OPENAI_API_KEY en .env.local y reiniciá
+### `npm run dev` → 502 + ingresoManualRequerido: true + nivelesPosibles
+### Esperado:
+###  - responde en ~1 s con "No pudimos obtener la sugerencia de urgencia..."
+###  - en la terminal: "openai: el proveedor respondió con error" { status: 401,
+###    detalle: "Incorrect API key provided..." }
+###  - no se guardó nada: el GET de abajo muestra PENDIENTE y evaluacionTriaje null
+POST {{base}}/api/solicitudes/{{nueva.response.body.id}}/evaluacion
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "frecuenciaCardiaca": 130, "presionSistolica": 85, "presionDiastolica": 50 }
+
+### TIMEOUT: con la clave buena, agregá OPENAI_BASE_URL=https://10.255.255.1/v1 en
+### .env.local (una IP que no responde) y reiniciá → 502 a los ~8 s, no se cuelga
+### Esperado en la terminal: "openai: no se pudo obtener la sugerencia"
+###   { error: "TimeoutError: The operation was aborted due to timeout" }
+POST {{base}}/api/solicitudes/{{nueva.response.body.id}}/evaluacion
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "frecuenciaCardiaca": 130, "presionSistolica": 85, "presionDiastolica": 50 }
+
+### Sistema consistente después de la falla → 200, PENDIENTE, sin evaluación
+GET {{base}}/api/solicitudes/{{nueva.response.body.id}}
+Cookie: {{sesionDerivante}}
+
+### Camino manual (con la IA todavía rota) → 201 + origenNivel "MANUAL"
+### No llama a OpenAI. Al terminar: clave buena y sin OPENAI_BASE_URL.
+POST {{base}}/api/solicitudes/{{nueva.response.body.id}}/evaluacion
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "frecuenciaCardiaca": 130, "presionSistolica": 85, "presionDiastolica": 50, "nivelUrgenciaSugerido": "CRITICO" }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   esTerminal,
   impedimentoParaAprobar,
+  impedimentoParaAsignarDestino,
+  ladoQueRechaza,
   liberaCamaAlRechazar,
   puedeEditarse,
   puedeTransicionar,
@@ -128,6 +130,43 @@ describe("impedimentoParaAprobar", () => {
   });
 });
 
+describe("impedimentoParaAsignarDestino", () => {
+  const centros = { centroOrigenId: "origen", centroDestinoId: "destino" };
+
+  it("con triaje hecho (EVALUANDO) se puede elegir otro centro", () => {
+    expect(
+      impedimentoParaAsignarDestino({ estado: "EVALUANDO", ...centros }),
+    ).toBeNull();
+  });
+
+  it("una PENDIENTE no tiene triaje: todavía no se sabe qué cama buscar", () => {
+    expect(
+      impedimentoParaAsignarDestino({ estado: "PENDIENTE", ...centros }),
+    ).toEqual({
+      motivo: "ESTADO_INCOMPATIBLE",
+      estadoActual: "PENDIENTE",
+      transicionesPosibles: ["EVALUANDO", "RECHAZADA"],
+    });
+  });
+
+  // Borde: una vez aprobada, el destino ya reservó la cama y no se cambia.
+  it("una APROBADA ya no cambia de destino", () => {
+    expect(
+      impedimentoParaAsignarDestino({ estado: "APROBADA", ...centros })?.motivo,
+    ).toBe("ESTADO_INCOMPATIBLE");
+  });
+
+  it("no se puede derivar al mismo centro de origen", () => {
+    expect(
+      impedimentoParaAsignarDestino({
+        estado: "EVALUANDO",
+        centroOrigenId: "origen",
+        centroDestinoId: "origen",
+      }),
+    ).toEqual({ motivo: "DESTINO_IGUAL_A_ORIGEN" });
+  });
+});
+
 describe("liberaCamaAlRechazar", () => {
   it("devuelve la cama solo si la solicitud estaba APROBADA", () => {
     expect(liberaCamaAlRechazar("APROBADA")).toBe(true);
@@ -137,5 +176,19 @@ describe("liberaCamaAlRechazar", () => {
   it("no libera nada si todavía estaba PENDIENTE o EVALUANDO", () => {
     expect(liberaCamaAlRechazar("PENDIENTE")).toBe(false);
     expect(liberaCamaAlRechazar("EVALUANDO")).toBe(false);
+  });
+});
+
+describe("ladoQueRechaza", () => {
+  it("el derivante rechaza desde el centro de origen", () => {
+    expect(ladoQueRechaza("MEDICO_DERIVANTE")).toBe("origen");
+  });
+
+  it("el receptor rechaza desde el centro de destino", () => {
+    expect(ladoQueRechaza("MEDICO_RECEPTOR")).toBe("destino");
+  });
+
+  it("el admin no participa del flujo clínico: no tiene lado", () => {
+    expect(ladoQueRechaza("ADMIN")).toBeNull();
   });
 });

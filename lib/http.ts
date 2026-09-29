@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { TipoUnidad } from "@prisma/client";
 import type { ZodError } from "zod";
 
 /**
@@ -6,6 +7,9 @@ import type { ZodError } from "zod";
  *
  * El status code es la parte importante: es lo que leen los clientes, los caches y
  * los monitores. El body sirve para que un humano entienda qué pasó.
+ *
+ * 401, 403 por rol y 500 no están acá: salen de las excepciones de lib/auth.ts y
+ * los traduce `responderError` (lib/errores.ts), en el catch de cada handler.
  *
  * Toda respuesta de error tiene dos audiencias: la persona, que lee `error`, y el
  * programa, que necesita el status y el dato estructurado para decidir qué hacer.
@@ -16,10 +20,6 @@ export function errorValidacion(error: ZodError) {
     { error: "Datos inválidos", detalles: error.flatten() },
     { status: 400 },
   );
-}
-
-export function noAutenticado() {
-  return NextResponse.json({ error: "Falta autenticación" }, { status: 401 });
 }
 
 export function sinPermiso(detalle: string, datos?: Record<string, unknown>) {
@@ -43,10 +43,26 @@ export function conflicto(detalle: string, datos?: Record<string, unknown>) {
 }
 
 /**
- * 500: solo llega acá lo que no se previó. El detalle va al log del servidor,
- * nunca al cliente — un mensaje de Prisma revela tablas, columnas y a veces el SQL.
+ * 409 de capacidad (caso de error de HU04). Lleva los tipos que sí tienen
+ * cama como array aparte: la pantalla los necesita para recargar el ranking.
  */
-export function errorInterno(contexto: string, error: unknown) {
-  console.error(contexto, error);
-  return NextResponse.json({ error: "Error interno" }, { status: 500 });
+export function capacidadAgotada(
+  tipoRequerido: TipoUnidad,
+  tiposLibres: readonly TipoUnidad[],
+) {
+  return conflicto(
+    `Capacidad agotada: el centro de destino no tiene camas ${tipoRequerido} disponibles`,
+    { tipoRequerido, tiposConCamaLibre: tiposLibres },
+  );
+}
+
+/**
+ * 502: el request y el estado están bien, pero un servicio externo del que depende
+ * la operación no respondió (clase 7). No es 500 porque no es un bug nuestro, y no
+ * es 409 porque reintentar más tarde puede funcionar.
+ *
+ * El mensaje dice qué hacer, no solo qué pasó: el usuario tiene que poder seguir.
+ */
+export function falloExterno(detalle: string, datos?: Record<string, unknown>) {
+  return NextResponse.json({ error: detalle, ...datos }, { status: 502 });
 }

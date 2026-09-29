@@ -41,7 +41,7 @@ describe("rankearCandidatos", () => {
     expect(ranking.map((c) => c.id)).toEqual(["muchas", "pocas"]);
   });
 
-  // Borde: el caso de error de H3 — sin cama del tipo pedido, no aparece.
+  // Borde: el caso de error de HU04 — sin cama del tipo pedido, no aparece.
   it("no ofrece centros con 0 camas del tipo requerido", () => {
     const ranking = rankearCandidatos([centro("sin-uti", 0)], "UTI", "origen");
     expect(ranking).toEqual([]);

@@ -26,7 +26,7 @@ describe("unidadConCamaLibre", () => {
     expect(unidadConCamaLibre([uco(2)], "UTI")).toBeNull();
   });
 
-  // Borde: el caso de error de H3 — la unidad existe pero quedó en cero.
+  // Borde: el caso de error de HU04 — la unidad existe pero quedó en cero.
   it("devuelve null con exactamente 0 camas", () => {
     expect(unidadConCamaLibre([uti(0)], "UTI")).toBeNull();
   });

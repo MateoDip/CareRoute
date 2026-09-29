@@ -104,6 +104,40 @@ export function impedimentoParaAprobar(params: {
 }
 
 /**
+ * Por qué el médico derivante no puede elegir ese destino, o null (HU04).
+ *
+ * El destino se elige mientras la solicitud está EVALUANDO: ya tiene triaje (y
+ * por lo tanto un tipo de cama requerido) y todavía nadie la aprobó. Se puede
+ * cambiar de destino mientras el receptor no haya aprobado. La capacidad de camas
+ * se chequea aparte, con lib/disponibilidad.ts.
+ */
+export type ImpedimentoDestino =
+  | {
+      motivo: "ESTADO_INCOMPATIBLE";
+      estadoActual: EstadoSolicitud;
+      transicionesPosibles: EstadoSolicitud[];
+    }
+  | { motivo: "DESTINO_IGUAL_A_ORIGEN" };
+
+export function impedimentoParaAsignarDestino(params: {
+  estado: EstadoSolicitud;
+  centroOrigenId: string;
+  centroDestinoId: string;
+}): ImpedimentoDestino | null {
+  if (params.estado !== "EVALUANDO") {
+    return {
+      motivo: "ESTADO_INCOMPATIBLE",
+      estadoActual: params.estado,
+      transicionesPosibles: transicionesPosibles(params.estado),
+    };
+  }
+  if (params.centroOrigenId === params.centroDestinoId) {
+    return { motivo: "DESTINO_IGUAL_A_ORIGEN" };
+  }
+  return null;
+}
+
+/**
  * Si al rechazar hay que devolver la cama al centro de destino.
  *
  * Solo una solicitud APROBADA tiene cama reservada: la aprobación la descontó.
@@ -111,4 +145,17 @@ export function impedimentoParaAprobar(params: {
  */
 export function liberaCamaAlRechazar(estado: EstadoSolicitud): boolean {
   return estado === "APROBADA";
+}
+
+/**
+ * Desde qué lado de la derivación rechaza cada rol: el derivante desde el
+ * centro de origen, el receptor desde el de destino. Lo usa la consulta de
+ * pertenencia (lib/db), así "no es de tu lado" termina en 404 como "no existe".
+ */
+export function ladoQueRechaza(
+  rol: RolUsuario,
+): "origen" | "destino" | null {
+  if (rol === "MEDICO_DERIVANTE") return "origen";
+  if (rol === "MEDICO_RECEPTOR") return "destino";
+  return null;
 }

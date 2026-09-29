@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { idSchema } from "./comun";
 
 export const recursoEspecializadoSchema = z.object({
-  id: z.string().uuid("El ID debe ser un UUID válido"),
-  centroSaludId: z.string().uuid("El ID del centro debe ser válido"),
+  id: idSchema,
+  centroSaludId: idSchema,
   tipo: z.enum(["RESPIRADOR", "MONITOR_MULTIPARAMETRICO", "DESFIBRILADOR", "BOMBA_INFUSION"]),
   estado: z.enum(["OPERATIVO", "EN_MANTENIMIENTO", "FUERA_DE_SERVICIO"]),
   ultimaRevision: z.coerce.date({

@@ -17,7 +17,7 @@ un nivel de urgencia y un algoritmo de scoring ordena hospitales candidatos.
 cambiar de hospital de destino o cerrarse sin una acción explícita de un profesional. Si una
 tarea pide automatizar esa confirmación, no la implementes: dejá el paso manual y avisá en el PR.
 
-Stack: Next.js (App Router) + TypeScript + Tailwind + Supabase (PostgreSQL) + Zod.
+Stack: Next.js 16 (App Router) + TypeScript + Tailwind + Prisma + PostgreSQL en Supabase + Supabase Auth (Google) + Zod + Vitest. IA: OpenAI.
 
 ## 2. Reglas duras
 
@@ -45,79 +45,107 @@ const data = TriajeResponseSchema.parse(await res.json());
 - Prohibido Yup, Joi, class-validator, `io-ts`, validaciones a mano con `if (!x) throw`, o
   confiar en que el input "ya viene bien" desde el frontend. La validación del cliente no
   reemplaza a la del servidor: se valida en ambos lados.
-- Los schemas viven en `src/lib/schemas/` y se exportan con el sufijo `Schema`.
-- En rutas usá `safeParse` y devolvé 400 con los errores; usá `parse` solo cuando querés que
-  falle fuerte (por ejemplo, al cargar las variables de entorno al arrancar).
+- Los schemas viven en `lib/schemas/` y se exportan con el sufijo `Schema`
+  (`crearSolicitudSchema`). El tipo se deriva: `type CrearSolicitud = z.infer<...>`.
+- Los ids son `cuid()`: se validan con `idSchema` (`lib/schemas/comun.ts`), nunca con `.uuid()`.
+- Los valores de los enums van en MAYÚSCULAS, igual que en `prisma/schema.prisma`.
+- En rutas usá `safeParse` y devolvé 400 con `errorValidacion` (`lib/http.ts`).
+- Zod no consulta la base ni tiene reglas que dependan del estado: eso es un 409 y va en
+  una función pura de `lib/`.
 
 ```ts
-// src/lib/schemas/derivacion.ts
-export const SignosVitalesSchema = z.object({
-  presion_sistolica: z.number().int().min(40).max(300),
-  presion_diastolica: z.number().int().min(20).max(200),
-  saturacion: z.number().int().min(0).max(100),
-  frecuencia_cardiaca: z.number().int().min(20).max(250),
+// lib/schemas/evaluacion-triaje.ts
+export const nivelUrgenciaSchema = z.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]);
+
+export const signosVitalesSchema = z.object({
+  frecuenciaCardiaca: z.number().int().min(20).max(250),
+  presionSistolica: z.number().int().min(40).max(300),
+  presionDiastolica: z.number().int().min(20).max(200),
 });
 
-export const NivelUrgenciaSchema = z.enum(["bajo", "medio", "alto", "critico"]);
-
-export const CrearDerivacionSchema = z.object({
-  paciente_nombre: z.string().min(1).max(120),
-  sintomas: z.string().min(10).max(2000),
-  signos_vitales: SignosVitalesSchema,
-  equipamiento_requerido: z.array(z.string()).default([]),
-  id_hospital_origen: z.string().uuid(),
-});
-
-export type CrearDerivacion = z.infer<typeof CrearDerivacionSchema>;
+export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 ```
 
 ### 2.3 Datos sensibles
 
 - No se loguean síntomas, signos vitales, nombre ni ningún dato identificable del paciente.
   Para depurar, logueá el `id` de la derivación y nada más.
-- No se hardcodean claves, URLs de conexión ni tokens. Todo va por variables de entorno.
+- No se hardcodean claves, URLs de conexión, tokens ni mails personales. Todo va por variables
+  de entorno (el seed lee los mails de prueba de `SEED_EMAIL_*`).
 - `SUPABASE_SERVICE_ROLE_KEY` y cualquier clave de IA se usan **solo en código de servidor**.
   Nunca en un componente cliente ni en una variable con prefijo `NEXT_PUBLIC_`.
 - No se suben datos reales de pacientes al repositorio. Los seeds usan datos ficticios.
 
 ### 2.4 Base de datos
 
-- Los cambios de esquema van como migraciones versionadas en `supabase/migrations/`.
-  No se modifica el esquema desde el panel de Supabase sin reflejarlo en una migración.
-- Row Level Security activada en todas las tablas. Un usuario solo ve las derivaciones de su
-  hospital (como origen o destino).
-- No se borran filas de `derivacion`: el historial es parte de la trazabilidad.
+- Prisma es el único acceso a la base, y **solo** desde `lib/db/`. Cero `prisma.` en `app/`.
+- Los cambios de esquema van como migraciones versionadas en `prisma/migrations/`. No se
+  modifica el esquema desde el panel de Supabase. Una migración aplicada no se edita: se
+  escribe una nueva. Las genera y aplica una sola persona.
+- Row Level Security activado en **todas** las tablas, sin políticas (ADR 0007): la API
+  REST de Supabase no ve nada. Tabla nueva ⇒ `ENABLE ROW LEVEL SECURITY` en la misma
+  migración.
+- Toda consulta que devuelve datos de un centro lleva el centro de la sesión en el `where`.
+  Nada de "traer y después comparar en el handler".
+- No se borran filas de `SolicitudTraslado` ni de `RegistroBitacora`: el historial es parte
+  de la trazabilidad. Rechazar es un cambio de estado.
+
+### 2.5 Autorización
+
+- La identidad sale solo de `requerirUsuario` / `requerirUsuarioConCentro` (`lib/auth.ts`),
+  primera línea del `try` de cada handler. Un endpoint sin esa llamada tiene que decir en
+  un comentario "es público a propósito".
+- Nunca `rol`, `usuarioId` ni `centroSaludId` del body, headers o query (la única excepción
+  es `PATCH /api/usuarios/:id`, donde un ADMIN asigna rol y centro a otro usuario).
+- El `catch` de cada handler es `return responderError("VERBO /ruta", error)`.
+- Orden: sesión (401) → rol / centro (403) → pertenencia (404) → body (400) → regla (409)
+  → servicio externo (502) → escribir.
+
+### 2.6 Servicios externos
+
+- Todo tercero se llama desde `lib/servicios/<nombre>.ts` y solo desde ahí.
+- Siempre con `AbortSignal.timeout`. Ante una falla, devuelve `null` y loguea; no lanza.
+- La credencial se lee con `process.env` en ese archivo, nunca con prefijo `NEXT_PUBLIC_`.
 
 ## 3. Convenciones de código
 
-- Nombres de dominio en español (`paciente`, `derivacion`, `nivel_urgencia`); palabras clave y
-  APIs del framework en inglés, como corresponde.
+- Nombres de dominio en español y en camelCase (`solicitudTraslado`, `nivelUrgencia`); palabras
+  clave y APIs del framework en inglés, como corresponde.
 - Componentes de React en `PascalCase`, hooks en `useCamelCase`, archivos en `kebab-case`.
 - Server Components por defecto; `"use client"` solo cuando hace falta estado o eventos.
 - Sin `console.log` en el código que se mergea.
 - Antes de instalar una dependencia nueva, preguntá. No agregues librerías por conveniencia.
 - No reformatees archivos que no tocaste ni hagas refactors masivos no pedidos.
 
-## 4. Estructura esperada
+## 4. Estructura
 
 ```
-src/
-  app/                 rutas (App Router) y route handlers
-  components/          componentes de UI reutilizables
-  lib/
-    schemas/           schemas de Zod (fuente de verdad de los tipos)
-    supabase/          clientes de Supabase (server / browser)
-    triaje/            llamada al modelo de lenguaje + scoring de hospitales
-  types/               tipos compartidos que no derivan de un schema
-supabase/migrations/   migraciones SQL
+app/
+  api/<recurso>/route.ts           colección
+  api/<recurso>/[id]/route.ts      individual
+  api/<recurso>/[id]/<operación>/  operaciones del flujo (destino, aprobacion, rechazo…)
+  auth/callback/route.ts           login con Google (público)
+lib/
+  auth.ts                          sesión, rol y centro
+  errores.ts                       responderError
+  http.ts                          respuestas 400 / 403 de regla / 404 / 409 / 502
+  db/                              consultas Prisma
+  schemas/                         schemas de Zod (fuente de verdad de los tipos)
+  servicios/                       servicios externos
+  supabase-server.ts, supabase-browser.ts   clientes de Supabase Auth
+  reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas puras (+ .test.ts)
+prisma/
+  schema.prisma, migrations/, seed.ts
+docs/
+  spec.md, api.md, api.http, adr/
 ```
 
 ## 5. Antes de abrir un Pull Request
 
 Checklist que el asistente debe verificar y el revisor va a controlar:
 
-- [ ] `npm run lint` y `npm run build` pasan sin errores ni warnings nuevos.
-- [ ] `npx tsc --noEmit` sin errores.
+- [ ] `npm run typecheck`, `npm run lint` y `npm test` en verde.
+- [ ] Cada endpoint nuevo tiene su fila en `docs/api.md` (tabla, matriz y errores) y sus requests en `docs/api.http`.
 - [ ] Cero apariciones de `any`, `as any`, `@ts-ignore` en el diff.
 - [ ] Toda entrada externa nueva tiene su schema de Zod.
 - [ ] Ningún secreto ni dato de paciente en el código, en los tests ni en los logs.
