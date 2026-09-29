@@ -1,246 +1,283 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type RolUsuario } from "@prisma/client";
 
-const prisma = new PrismaClient()
+/**
+ * Datos de prueba para recorrer el flujo principal y cada fila del catálogo de
+ * errores de docs/api.md (una request por fila en docs/api.http).
+ *
+ * Es idempotente: cada `upsert` reinicia el estado, así `npm run db:seed` deja
+ * todo listo para volver a correr api.http de punta a punta.
+ *
+ * USUARIOS (clase 6): el login es con Google, así que para entrar con cada rol
+ * hace falta un mail REAL. No se commitean: salen de .env.local.
+ *   SEED_EMAIL_ADMIN, SEED_EMAIL_DERIVANTE, SEED_EMAIL_RECEPTOR
+ * Si falta alguno, se usa un mail ficticio (sirve para la base, no para entrar).
+ * Los ids de usuario no se escriben a mano: los genera la base.
+ */
+
+const prisma = new PrismaClient();
+
+function emailDe(variable: string, ficticio: string): string {
+  const valor = process.env[variable]?.trim();
+  return valor ? valor.toLowerCase() : ficticio;
+}
+
+/**
+ * Crea el usuario o, si ya entró con Google (y quedó MEDICO_DERIVANTE sin
+ * centro), le asigna el rol y el centro de prueba. Es lo que haría un admin.
+ */
+async function usuarioDePrueba(datos: {
+  email: string;
+  nombre: string;
+  rol: RolUsuario;
+  centroSaludId: string | null;
+}) {
+  await prisma.usuario.upsert({
+    where: { email: datos.email },
+    update: { rol: datos.rol, centroSaludId: datos.centroSaludId },
+    create: datos,
+  });
+}
 
 async function main() {
-  // 1. Centros de Salud (Origen y Destino)
+  // ---------------------------------------------------------------------------
+  // 1. Centros, unidades y recursos
+  // ---------------------------------------------------------------------------
   const centroOrigen = await prisma.centroSalud.upsert({
-    where: { id: 'centro-origen-1' },
+    where: { id: "centro-origen-1" },
     update: {},
     create: {
-      id: 'centro-origen-1',
-      nombre: 'Hospital de Emergencias Clemente Álvarez (HECA)',
-      nivelComplejidad: 'ALTA',
-      ubicacion: 'Pellegrini 3205',
+      id: "centro-origen-1",
+      nombre: "Hospital de Emergencias Clemente Álvarez (HECA)",
+      nivelComplejidad: "ALTA",
+      ubicacion: "Pellegrini 3205",
     },
-  })
+  });
 
   const centroDestino = await prisma.centroSalud.upsert({
-    where: { id: 'centro-destino-1' },
+    where: { id: "centro-destino-1" },
     update: {},
     create: {
-      id: 'centro-destino-1',
-      nombre: 'Hospital Provincial del Centenario',
-      nivelComplejidad: 'ALTA',
-      ubicacion: 'Urquiza 3101',
+      id: "centro-destino-1",
+      nombre: "Hospital Provincial del Centenario",
+      nivelComplejidad: "ALTA",
+      ubicacion: "Urquiza 3101",
     },
-  })
+  });
 
-  // 2. Usuarios con distintos roles
-  await prisma.usuario.upsert({
-    where: { email: 'derivante@heca.gov.ar' },
-    update: {},
-    create: {
-      email: 'derivante@heca.gov.ar',
-      nombre: 'Dr. Pérez (Derivante)',
-      rol: 'MEDICO_DERIVANTE',
-      centroSaludId: centroOrigen.id,
-    },
-  })
-
-  await prisma.usuario.upsert({
-    where: { email: 'receptor@centenario.gov.ar' },
-    update: {},
-    create: {
-      email: 'receptor@centenario.gov.ar',
-      nombre: 'Dra. Gómez (Receptora)',
-      rol: 'MEDICO_RECEPTOR',
-      centroSaludId: centroDestino.id,
-    },
-  })
-
-  // 2b. Unidades de cuidados — sin camas cargadas, ninguna derivación se puede
-  // aprobar, así que hacen falta para probar HU04.
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-origen-uti' },
-    update: {},
-    create: {
-      id: 'unidad-origen-uti',
-      centroSaludId: centroOrigen.id,
-      tipo: 'UTI',
-      camasDisponibles: 1,
-    },
-  })
-
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-destino-uti' },
-    update: { camasDisponibles: 3 },
-    create: {
-      id: 'unidad-destino-uti',
-      centroSaludId: centroDestino.id,
-      tipo: 'UTI',
-      camasDisponibles: 3,
-    },
-  })
-
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-destino-uco' },
-    update: { camasDisponibles: 2 },
-    create: {
-      id: 'unidad-destino-uco',
-      centroSaludId: centroDestino.id,
-      tipo: 'UCO',
-      camasDisponibles: 2,
-    },
-  })
-
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-destino-sala' },
-    update: {},
-    create: {
-      id: 'unidad-destino-sala',
-      centroSaludId: centroDestino.id,
-      tipo: 'SALA_COMUN',
-      camasDisponibles: 8,
-    },
-  })
-
-  // 3. Caso Feliz: Solicitud aprobada con evaluación de triaje completa
-  await prisma.solicitudTraslado.upsert({
-    where: { id: 'solicitud-ok-1' },
-    update: { estado: 'APROBADA', centroDestinoId: centroDestino.id },
-    create: {
-      id: 'solicitud-ok-1',
-      centroOrigenId: centroOrigen.id,
-      centroDestinoId: centroDestino.id,
-      pacienteDni: '12345678',
-      estado: 'APROBADA',
-      evaluacionTriaje: {
-        create: {
-          frecuenciaCardiaca: 80,
-          presionSistolica: 120,
-          presionDiastolica: 80,
-          nivelUrgenciaSugerido: 'MEDIO',
-        }
-      }
-    },
-  })
-
-  // 4. Caso "Regla de Negocio": Recurso roto para probar que no se puedan asignar derivaciones
-  await prisma.recursoEspecializado.upsert({
-    where: { id: 'recurso-roto-1' },
-    update: {},
-    create: {
-      id: 'recurso-roto-1',
-      centroSaludId: centroDestino.id,
-      tipo: 'RESPIRADOR',
-      estado: 'FUERA_DE_SERVICIO', // <-- El caso "trampa" que pide la cátedra
-      ultimaRevision: new Date(),
-    }
-  })
-
-  await prisma.solicitudTraslado.upsert({
-    where: { id: 'solicitud-pendiente-1' },
-    update: {},
-    create: {
-      id: 'solicitud-pendiente-1',
-      centroOrigenId: centroOrigen.id,
-      pacienteDni: '87654321',
-      estado: 'PENDIENTE',
-    },
-  })
-
-  // 5. Datos para docs/api.http — un caso por fila del catálogo de errores.
-  //    Los `update` reinician el estado: `npm run db:seed` deja todo listo para
-  //    volver a correr el archivo entero después de aprobar o rechazar.
-
-  // Receptor que trabaja en el centro de origen: dispara "destino = origen" (409).
-  await prisma.usuario.upsert({
-    where: { email: 'receptor@heca.gov.ar' },
-    update: {},
-    create: {
-      email: 'receptor@heca.gov.ar',
-      nombre: 'Dr. Ruiz (Receptor HECA)',
-      rol: 'MEDICO_RECEPTOR',
-      centroSaludId: centroOrigen.id,
-    },
-  })
-
-  // Centro con UTI en cero y UCO libre: dispara "Capacidad agotada" (H3).
+  // Centro con UTI en cero y UCO libre: dispara "Capacidad agotada" (HU04).
   const centroSinCamas = await prisma.centroSalud.upsert({
-    where: { id: 'centro-sin-camas-1' },
+    where: { id: "centro-sin-camas-1" },
     update: {},
     create: {
-      id: 'centro-sin-camas-1',
-      nombre: 'Sanatorio de Prueba Sin Camas UTI',
-      nivelComplejidad: 'MEDIA',
-      ubicacion: 'Córdoba 1000',
+      id: "centro-sin-camas-1",
+      nombre: "Sanatorio de Prueba Sin Camas UTI",
+      nivelComplejidad: "MEDIA",
+      ubicacion: "Córdoba 1000",
     },
-  })
+  });
 
-  await prisma.usuario.upsert({
-    where: { email: 'receptor@sincamas.gov.ar' },
+  const unidades = [
+    { id: "unidad-origen-uti", centroSaludId: centroOrigen.id, tipo: "UTI", camas: 1 },
+    { id: "unidad-destino-uti", centroSaludId: centroDestino.id, tipo: "UTI", camas: 3 },
+    { id: "unidad-destino-uco", centroSaludId: centroDestino.id, tipo: "UCO", camas: 2 },
+    { id: "unidad-destino-sala", centroSaludId: centroDestino.id, tipo: "SALA_COMUN", camas: 8 },
+    { id: "unidad-sincamas-uti", centroSaludId: centroSinCamas.id, tipo: "UTI", camas: 0 },
+    { id: "unidad-sincamas-uco", centroSaludId: centroSinCamas.id, tipo: "UCO", camas: 2 },
+  ] as const;
+
+  for (const unidad of unidades) {
+    await prisma.unidadCuidados.upsert({
+      where: { id: unidad.id },
+      update: { camasDisponibles: unidad.camas },
+      create: {
+        id: unidad.id,
+        centroSaludId: unidad.centroSaludId,
+        tipo: unidad.tipo,
+        camasDisponibles: unidad.camas,
+      },
+    });
+  }
+
+  // Regla de negocio violada a propósito: un respirador fuera de servicio no
+  // suma como recurso operativo en el ranking.
+  await prisma.recursoEspecializado.upsert({
+    where: { id: "recurso-roto-1" },
     update: {},
     create: {
-      email: 'receptor@sincamas.gov.ar',
-      nombre: 'Dra. Sosa (Receptora sin camas)',
-      rol: 'MEDICO_RECEPTOR',
-      centroSaludId: centroSinCamas.id,
+      id: "recurso-roto-1",
+      centroSaludId: centroDestino.id,
+      tipo: "RESPIRADOR",
+      estado: "FUERA_DE_SERVICIO",
+      ultimaRevision: new Date("2026-08-01T12:00:00Z"),
     },
-  })
+  });
 
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-sincamas-uti' },
-    update: { camasDisponibles: 0 },
+  await prisma.recursoEspecializado.upsert({
+    where: { id: "recurso-ok-1" },
+    update: {},
     create: {
-      id: 'unidad-sincamas-uti',
-      centroSaludId: centroSinCamas.id,
-      tipo: 'UTI',
-      camasDisponibles: 0,
+      id: "recurso-ok-1",
+      centroSaludId: centroDestino.id,
+      tipo: "MONITOR_MULTIPARAMETRICO",
+      estado: "OPERATIVO",
+      ultimaRevision: new Date("2026-09-01T12:00:00Z"),
     },
-  })
+  });
 
-  await prisma.unidadCuidados.upsert({
-    where: { id: 'unidad-sincamas-uco' },
-    update: { camasDisponibles: 2 },
-    create: {
-      id: 'unidad-sincamas-uco',
-      centroSaludId: centroSinCamas.id,
-      tipo: 'UCO',
-      camasDisponibles: 2,
-    },
-  })
+  // ---------------------------------------------------------------------------
+  // 2. Usuarios de prueba, uno por rol
+  // ---------------------------------------------------------------------------
+  await usuarioDePrueba({
+    email: emailDe("SEED_EMAIL_ADMIN", "admin@careroute.test"),
+    nombre: "Admin de prueba",
+    rol: "ADMIN",
+    centroSaludId: null, // el admin no participa del flujo clínico
+  });
 
-  // Solicitud EVALUANDO, urgencia CRITICO (→ UTI), sin destino: la que se aprueba.
+  await usuarioDePrueba({
+    email: emailDe("SEED_EMAIL_DERIVANTE", "derivante@heca.test"),
+    nombre: "Dr. Pérez (Derivante HECA)",
+    rol: "MEDICO_DERIVANTE",
+    centroSaludId: centroOrigen.id,
+  });
+
+  await usuarioDePrueba({
+    email: emailDe("SEED_EMAIL_RECEPTOR", "receptor@centenario.test"),
+    nombre: "Dra. Gómez (Receptora Centenario)",
+    rol: "MEDICO_RECEPTOR",
+    centroSaludId: centroDestino.id,
+  });
+
+  // ---------------------------------------------------------------------------
+  // 3. Solicitudes, una por situación del catálogo de errores
+  // ---------------------------------------------------------------------------
+
+  // PENDIENTE, sin triaje: corregir DNI, evaluar, 409 de "falta triaje".
   await prisma.solicitudTraslado.upsert({
-    where: { id: 'solicitud-evaluada-1' },
-    update: { estado: 'EVALUANDO', centroDestinoId: null },
+    where: { id: "solicitud-pendiente-1" },
+    update: { estado: "PENDIENTE", centroDestinoId: null, fechaAprobacion: null },
     create: {
-      id: 'solicitud-evaluada-1',
+      id: "solicitud-pendiente-1",
       centroOrigenId: centroOrigen.id,
-      pacienteDni: '99000001',
-      estado: 'EVALUANDO',
+      pacienteDni: "99000010",
+    },
+  });
+  await prisma.evaluacionTriaje.deleteMany({
+    where: { solicitudId: "solicitud-pendiente-1" },
+  });
+
+  // EVALUANDO, CRÍTICO (→ UTI), sin destino: el derivante elige destino.
+  await prisma.solicitudTraslado.upsert({
+    where: { id: "solicitud-evaluada-1" },
+    update: { estado: "EVALUANDO", centroDestinoId: null, fechaAprobacion: null },
+    create: {
+      id: "solicitud-evaluada-1",
+      centroOrigenId: centroOrigen.id,
+      pacienteDni: "99000001",
+      estado: "EVALUANDO",
       evaluacionTriaje: {
         create: {
           frecuenciaCardiaca: 130,
           presionSistolica: 85,
           presionDiastolica: 50,
-          nivelUrgenciaSugerido: 'CRITICO',
+          nivelUrgenciaSugerido: "CRITICO",
+          origenNivel: "MANUAL",
         },
       },
     },
-  })
+  });
 
-  // Solicitud de otro centro: para el derivante del HECA tiene que dar 404.
+  // EVALUANDO, CRÍTICO, destino ya elegido (Centenario): la aprueba el receptor.
   await prisma.solicitudTraslado.upsert({
-    where: { id: 'solicitud-ajena-1' },
+    where: { id: "solicitud-propuesta-1" },
+    update: {
+      estado: "EVALUANDO",
+      centroDestinoId: centroDestino.id,
+      fechaAprobacion: null,
+    },
+    create: {
+      id: "solicitud-propuesta-1",
+      centroOrigenId: centroOrigen.id,
+      centroDestinoId: centroDestino.id,
+      pacienteDni: "99000003",
+      estado: "EVALUANDO",
+      evaluacionTriaje: {
+        create: {
+          frecuenciaCardiaca: 125,
+          presionSistolica: 90,
+          presionDiastolica: 55,
+          nivelUrgenciaSugerido: "CRITICO",
+          origenNivel: "IA",
+        },
+      },
+    },
+  });
+
+  // APROBADA con tripulación asignada: 409 de "ya aprobada", 403 del derivante
+  // que intenta rechazarla (spec §6), rechazo del receptor que devuelve la cama.
+  const aprobada = await prisma.solicitudTraslado.upsert({
+    where: { id: "solicitud-ok-1" },
+    update: { estado: "APROBADA", centroDestinoId: centroDestino.id },
+    create: {
+      id: "solicitud-ok-1",
+      centroOrigenId: centroOrigen.id,
+      centroDestinoId: centroDestino.id,
+      pacienteDni: "99000004",
+      estado: "APROBADA",
+      fechaAprobacion: new Date("2026-09-20T14:30:00Z"),
+      evaluacionTriaje: {
+        create: {
+          frecuenciaCardiaca: 80,
+          presionSistolica: 120,
+          presionDiastolica: 80,
+          nivelUrgenciaSugerido: "MEDIO",
+          origenNivel: "MANUAL",
+        },
+      },
+    },
+  });
+
+  // N-N: una tripulación hace varios traslados; este traslado tiene una.
+  const tripulacion = await prisma.tripulacionMedica.upsert({
+    where: { id: "tripulacion-1" },
     update: {},
     create: {
-      id: 'solicitud-ajena-1',
-      centroOrigenId: centroSinCamas.id,
-      pacienteDni: '99000002',
-      estado: 'PENDIENTE',
+      id: "tripulacion-1",
+      patenteAmbulancia: "AE123CD",
+      paramedicoResponsable: "Lic. Romero",
+      estado: "EN_BASE",
     },
-  })
+  });
+  await prisma.asignacionTripulacion.upsert({
+    where: {
+      solicitudId_tripulacionMedicaId: {
+        solicitudId: aprobada.id,
+        tripulacionMedicaId: tripulacion.id,
+      },
+    },
+    update: {},
+    create: { solicitudId: aprobada.id, tripulacionMedicaId: tripulacion.id },
+  });
 
-  console.log('Seed ejecutado correctamente: Datos cargados en la base.')
+  // Solicitud de OTRO centro: para el derivante del HECA tiene que dar 404.
+  await prisma.solicitudTraslado.upsert({
+    where: { id: "solicitud-ajena-1" },
+    update: {},
+    create: {
+      id: "solicitud-ajena-1",
+      centroOrigenId: centroSinCamas.id,
+      pacienteDni: "99000002",
+    },
+  });
+
+  console.log("Seed ejecutado: centros, usuarios de prueba y solicitudes cargados.");
 }
 
 main()
-  .catch((e) => {
-    console.error(e)
-    process.exit(1)
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect()
-  })
+    await prisma.$disconnect();
+  });

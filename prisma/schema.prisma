@@ -68,6 +68,12 @@ enum EstadoTripulacion {
   REGRESANDO
 }
 
+/// De dónde salió el nivel de urgencia de una evaluación (clase 7, spec §6).
+enum OrigenNivelUrgencia {
+  IA
+  MANUAL
+}
+
 enum EventoBitacora {
   SALIDA_BASE
   LLEGADA_ORIGEN
@@ -78,6 +84,10 @@ enum EventoBitacora {
 
 // ==========================================
 // ENTIDADES
+//
+// Orden de cada modelo: id → campos propios → relaciones (objeto + FK) →
+// timestamps → índices. Timestamps: `creadaEn` y `actualizadaEn` ("la fila fue
+// creada / actualizada"), el mismo nombre en todas las tablas.
 // ==========================================
 
 model Usuario {
@@ -88,6 +98,9 @@ model Usuario {
   centroSaludId String?
 
   centroSalud CentroSalud? @relation(fields: [centroSaludId], references: [id], onDelete: Restrict)
+
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
 
   @@index([centroSaludId])
 }
@@ -103,85 +116,128 @@ model CentroSalud {
   recursosEspecializados RecursoEspecializado[]
   solicitudesOrigen      SolicitudTraslado[]    @relation("CentroOrigen")
   solicitudesDestino     SolicitudTraslado[]    @relation("CentroDestino")
+
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
 }
 
 model UnidadCuidados {
   id               String     @id @default(cuid())
-  centroSaludId    String
   tipo             TipoUnidad
   camasDisponibles Int        @default(0)
 
-  centroSalud CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+  centroSaludId String
+  centroSalud   CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
 
   @@index([centroSaludId])
 }
 
 model RecursoEspecializado {
   id             String        @id @default(cuid())
-  centroSaludId  String
   tipo           TipoRecurso
   estado         EstadoRecurso
   ultimaRevision DateTime
 
-  centroSalud CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+  centroSaludId String
+  centroSalud   CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
+
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
 
   @@index([centroSaludId])
 }
 
+/// `fechaSolicitud` cumple el papel de `creadaEn`: es el momento en que la fila nace.
 model SolicitudTraslado {
   id              String          @id @default(cuid())
-  centroOrigenId  String
-  centroDestinoId String?
   pacienteDni     String
   estado          EstadoSolicitud @default(PENDIENTE)
   fechaSolicitud  DateTime        @default(now())
+  /// H3: "se registra la fecha y hora de la decisión". Null hasta que se aprueba.
+  fechaAprobacion DateTime?
 
-  centroOrigen      CentroSalud         @relation("CentroOrigen", fields: [centroOrigenId], references: [id], onDelete: Restrict)
-  centroDestino     CentroSalud?        @relation("CentroDestino", fields: [centroDestinoId], references: [id], onDelete: Restrict)
-  evaluacionTriaje  EvaluacionTriaje?
-  tripulacionMedica TripulacionMedica[]
-  registrosBitacora RegistroBitacora[]
+  centroOrigenId  String
+  centroOrigen    CentroSalud  @relation("CentroOrigen", fields: [centroOrigenId], references: [id], onDelete: Restrict)
+  /// Lo elige el médico derivante desde el ranking (HU04). Null hasta entonces.
+  centroDestinoId String?
+  centroDestino   CentroSalud? @relation("CentroDestino", fields: [centroDestinoId], references: [id], onDelete: Restrict)
+
+  evaluacionTriaje        EvaluacionTriaje?
+  asignacionesTripulacion AsignacionTripulacion[]
+  registrosBitacora       RegistroBitacora[]
+
+  actualizadaEn DateTime @updatedAt
 
   @@index([centroOrigenId])
   @@index([centroDestinoId])
 }
 
 model EvaluacionTriaje {
-  id                    String        @id @default(cuid())
-  solicitudId           String        @unique
+  id                    String              @id @default(cuid())
   frecuenciaCardiaca    Int
   presionSistolica      Int
   presionDiastolica     Int
   nivelUrgenciaSugerido NivelUrgencia
+  /// IA si lo sugirió OpenAI, MANUAL si lo eligió el médico (spec §6, regla 2).
+  origenNivel           OrigenNivelUrgencia @default(MANUAL)
 
+  solicitudId       String            @unique
   solicitudTraslado SolicitudTraslado @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
 
-  // No necesita @@index porque @unique ya crea uno automáticamente
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
+
+  // No necesita @@index: @unique ya crea uno.
 }
 
+/// Una tripulación (ambulancia + paramédico) hace muchos traslados, y un traslado
+/// puede necesitar más de una (relevo en rutas largas): relación N-N con
+/// SolicitudTraslado a través de AsignacionTripulacion.
 model TripulacionMedica {
   id                    String            @id @default(cuid())
-  solicitudId           String
   patenteAmbulancia     String
   paramedicoResponsable String
   estado                EstadoTripulacion
 
-  solicitudTraslado SolicitudTraslado  @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
+  asignaciones      AsignacionTripulacion[]
   registrosBitacora RegistroBitacora[]
 
-  @@index([solicitudId])
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
 }
 
-model RegistroBitacora {
-  id                  String         @id @default(cuid())
-  solicitudId         String
-  tripulacionMedicaId String?
-  fechaHora           DateTime       @default(now())
-  evento              EventoBitacora
-  observaciones       String?
+/// Tabla intermedia de la N-N SolicitudTraslado ↔ TripulacionMedica. Es entidad
+/// y no una tabla implícita de Prisma porque tiene un dato propio: cuándo se asignó.
+model AsignacionTripulacion {
+  asignadaEn DateTime @default(now())
 
-  solicitudTraslado SolicitudTraslado  @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
-  tripulacionMedica TripulacionMedica? @relation(fields: [tripulacionMedicaId], references: [id], onDelete: Restrict)
+  solicitudId         String
+  solicitudTraslado   SolicitudTraslado @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
+  tripulacionMedicaId String
+  tripulacionMedica   TripulacionMedica @relation(fields: [tripulacionMedicaId], references: [id], onDelete: Restrict)
+
+  // La clave compuesta impide asignar dos veces la misma tripulación al mismo
+  // traslado, y su índice ya cubre los filtros por solicitudId.
+  @@id([solicitudId, tripulacionMedicaId])
+  @@index([tripulacionMedicaId])
+}
+
+/// Log de auditoría: no se edita ni se borra, por eso no tiene `actualizadaEn`.
+model RegistroBitacora {
+  id            String         @id @default(cuid())
+  fechaHora     DateTime       @default(now())
+  evento        EventoBitacora
+  observaciones String?
+
+  solicitudId         String
+  solicitudTraslado   SolicitudTraslado  @relation(fields: [solicitudId], references: [id], onDelete: Restrict)
+  tripulacionMedicaId String?
+  tripulacionMedica   TripulacionMedica? @relation(fields: [tripulacionMedicaId], references: [id], onDelete: Restrict)
+
+  creadaEn DateTime @default(now())
 
   @@index([solicitudId])
   @@index([tripulacionMedicaId])
