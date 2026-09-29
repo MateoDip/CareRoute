@@ -1,1 +1,25 @@
- "use client"; import { crearClienteSupabaseBrowser } from "@/lib/supabase-browser"; export default function Home() { const supabase = crearClienteSupabaseBrowser(); async function entrarConGoogle() { await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` }, }); } return ( <main className="flex min-h-screen flex-col items-center justify-center p-24"> <h1 className="text-4xl font-bold text-blue-600">CareRoute</h1> <p className="mt-4 text-xl">Prueba de login — temporal</p> <button onClick={entrarConGoogle} className="mt-6 rounded bg-blue-600 px-4 py-2 text-white" > Entrar con Google </button> </main> ); } 
+"use client";
+import { crearClienteSupabaseBrowser } from "@/lib/supabase-browser";
+export default function Home() {
+  const supabase = crearClienteSupabaseBrowser();
+  async function entrarConGoogle() {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+  }
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      {" "}
+      <h1 className="text-4xl font-bold text-blue-600">CareRoute</h1>{" "}
+      <p className="mt-4 text-xl">Prueba de login — temporal</p>{" "}
+      <button
+        onClick={entrarConGoogle}
+        className="mt-6 rounded bg-blue-600 px-4 py-2 text-white"
+      >
+        {" "}
+        Entrar con Google{" "}
+      </button>{" "}
+    </main>
+  );
+}
