@@ -1,6 +1,6 @@
 # ADR 0002 — Reglas que esperan una migración
 
-**Estado:** aceptada
+**Estado:** aceptada (revisada el 2026-09-29)
 **Fecha:** 2026-09-22
 **Decide:** equipo CareRoute
 
@@ -46,3 +46,12 @@ propio PR y su propia migración versionada.
   `EvaluacionTriaje` más un evento de bitácora para la corrección manual.
 - Si alguna de estas reglas pasa a ser obligatoria para una entrega antes de que
   exista la migración, se revisa esta decisión.
+
+## Revisión 2026-09-29
+
+- La migración `20260929230000_timestamps_nn_tripulacion_rls` agregó
+  `EvaluacionTriaje.origenNivel` (IA o MANUAL): ya queda registrado si el nivel lo
+  sugirió la IA o lo eligió el médico. Lo que sigue pendiente de la regla §6.2 es la
+  **corrección posterior** de un nivel ya sugerido (guardar sugerido y confirmado por
+  separado), que necesita un endpoint nuevo.
+- Siguen pendientes: equipamiento requerido por solicitud y coordenadas de los centros.

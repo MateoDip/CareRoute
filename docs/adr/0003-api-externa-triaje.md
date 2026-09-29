@@ -40,7 +40,7 @@ Porque nos garantiza que la respuesta siempre cumple el schema que después vali
 - El módulo nunca lanza: ante cualquier falla devuelve `null` y loguea el error del
   proveedor (con el id de la solicitud, nunca los signos vitales).
 - Para `POST /api/solicitudes/:id/evaluacion` el servicio es **esencial**: si falla, el
-  endpoint responde `502` sin guardar nada y pide el nivel manual (H2). Si el médico ya
+  endpoint responde `502` sin guardar nada y pide el nivel manual (HU02). Si el médico ya
   manda el nivel, no se llama a OpenAI. Detalle en `docs/spec.md` §8.
 - Si más adelante se cambia de proveedor, solo se toca `lib/servicios/openai.ts`, no los
   route handlers.
