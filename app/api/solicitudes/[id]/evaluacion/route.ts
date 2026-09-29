@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
+import { requerirUsuarioConCentro } from "@/lib/auth";
 import {
   obtenerSolicitudDelCentro,
   registrarEvaluacion,
 } from "@/lib/db/solicitudes";
+import { responderError } from "@/lib/errores";
 import {
   conflicto,
-  errorInterno,
   errorValidacion,
   falloExterno,
-  noAutenticado,
   noEncontrado,
-  sinPermiso,
 } from "@/lib/http";
 import {
   puedeTransicionar,
@@ -21,57 +20,47 @@ import {
   nivelUrgenciaSchema,
 } from "@/lib/schemas/evaluacion-triaje";
 import { sugerirNivelUrgencia } from "@/lib/servicios/openai";
-import { getSesion } from "@/lib/sesion";
 
 type Contexto = { params: Promise<{ id: string }> };
 
 /**
- * POST /api/solicitudes/:id/evaluacion — registra la evaluación de triaje (HU02).
+ * POST /api/solicitudes/:id/evaluacion — registra el triaje (HU02).
  *
- * `EvaluacionTriaje.solicitudId` es @unique: una sola evaluación por solicitud. Si
- * ya existe, se responde 409 explícitamente. Si no se verificara, Prisma tiraría una
- * excepción de constraint y el endpoint devolvería 500 — y un 500 significa "bug
- * mío", no "el cliente pidió algo imposible".
- *
- * Nivel de urgencia (clase 7, H2, spec §8):
+ * Nivel de urgencia (clase 7, spec §8):
  *  - Si el body NO trae `nivelUrgenciaSugerido`, se lo pide a OpenAI. Para esta
  *    operación el servicio es ESENCIAL: sin nivel no hay evaluación que guardar.
- *    Por eso se llama ANTES de guardar, y si falla se responde 502 sin tocar la
- *    base; el médico reenvía con el nivel elegido a mano.
- *  - Si el body lo trae, es el ingreso manual de H2 y no se llama a la IA.
+ *    Se llama ANTES de guardar; si falla, 502 sin tocar la base, y el médico
+ *    reenvía con el nivel elegido a mano (caso de error de HU02).
+ *  - Si el body lo trae, es el ingreso manual y no se llama a la IA.
+ * Se guarda de dónde salió el nivel (`origenNivel`: IA o MANUAL).
  *
- * La auditoría de la corrección manual (spec §6) sigue esperando una migración:
- * ver docs/adr/0002. La regla de dominio no cambia: la IA sugiere, nunca decide —
- * la derivación la confirma un médico en /aprobacion.
+ * La IA sugiere, nunca decide: la derivación la confirma un médico en /aprobacion.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
+    // 1-2. SESIÓN y ROL → 401 / 403
+    const usuario = await requerirUsuarioConCentro("MEDICO_DERIVANTE");
     const { id } = await params;
 
+    // 3. PERTENENCIA → 404. El triaje lo registra el centro de origen.
+    const solicitud = await obtenerSolicitudDelCentro(
+      id,
+      usuario.centroSaludId,
+      "origen",
+    );
+    if (!solicitud) return noEncontrado("La solicitud no existe");
+
+    // 4. BODY → 400
     const body: unknown = await request.json().catch(() => null);
     const datos = crearEvaluacionSchema.safeParse(body);
     if (!datos.success) return errorValidacion(datos.error);
 
-    const sesion = await getSesion(request);
-    if (!sesion) return noAutenticado();
-
-    const solicitud = await obtenerSolicitudDelCentro(id, sesion.centroSaludId);
-    if (!solicitud) return noEncontrado("La solicitud no existe");
-
-    if (sesion.rol !== "MEDICO_DERIVANTE") {
-      return sinPermiso("Solo un médico derivante puede registrar el triaje");
-    }
-    if (solicitud.centroOrigenId !== sesion.centroSaludId) {
-      return sinPermiso("Solo el centro de origen puede registrar el triaje");
-    }
-
+    // 5. REGLAS → 409. EvaluacionTriaje es 1 a 1 con la solicitud.
     if (solicitud.evaluacionTriaje) {
       return conflicto("La solicitud ya fue evaluada", {
         estadoActual: solicitud.estado,
       });
     }
-
-    // Registrar el triaje pasa la solicitud a EVALUANDO: una RECHAZADA no vuelve.
     if (!puedeTransicionar(solicitud.estado, "EVALUANDO")) {
       return conflicto("La solicitud no puede evaluarse en este estado", {
         estadoActual: solicitud.estado,
@@ -79,7 +68,7 @@ export async function POST(request: Request, { params }: Contexto) {
       });
     }
 
-    // SERVICIO EXTERNO (esencial) → 502. Va después de las reglas: no se gasta
+    // 6. SERVICIO EXTERNO (esencial) → 502. Después de las reglas: no se gasta
     // una llamada a OpenAI para una solicitud que igual se iba a rechazar.
     const { nivelUrgenciaSugerido: nivelManual, ...signos } = datos.data;
     const nivel = nivelManual ?? (await sugerirNivelUrgencia(signos, id));
@@ -93,15 +82,20 @@ export async function POST(request: Request, { params }: Contexto) {
       );
     }
 
+    // 7. DELEGAR — null: otro médico la evaluó entre la lectura y la escritura.
     const evaluacion = await registrarEvaluacion(id, {
       ...signos,
       nivelUrgenciaSugerido: nivel,
+      origenNivel: nivelManual ? "MANUAL" : "IA",
     });
-    return NextResponse.json(
-      { ...evaluacion, origenNivel: nivelManual ? "MANUAL" : "IA" },
-      { status: 201 },
-    );
+    if (!evaluacion) {
+      return conflicto("La solicitud ya fue evaluada", {
+        estadoActual: "EVALUANDO",
+      });
+    }
+
+    return NextResponse.json(evaluacion, { status: 201 });
   } catch (error) {
-    return errorInterno("POST /api/solicitudes/:id/evaluacion", error);
+    return responderError("POST /api/solicitudes/:id/evaluacion", error);
   }
 }

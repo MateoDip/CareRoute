@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { idSchema } from "./comun";
 
 export const registroBitacoraSchema = z.object({
-  id: z.string().uuid("El ID debe ser un UUID válido"),
-  solicitudId: z.string().uuid("El ID de la solicitud debe ser válido"),
+  id: idSchema,
+  solicitudId: idSchema,
+  tripulacionMedicaId: idSchema.optional(),
   fechaHora: z.coerce.date({
     required_error: "La fecha y hora son obligatorias",
     invalid_type_error: "Formato de fecha inválido",

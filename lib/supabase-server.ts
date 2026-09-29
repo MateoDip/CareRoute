@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 /**
  * Supabase Auth también es un tercero (clase 7): sin timeout, si no responde, cada
  * request queda colgado en `getUser()`. Con timeout, `getUser()` devuelve error,
- * `getSesion` devuelve null y el handler corta en ≤ 5 s.
+ * `obtenerUsuario` devuelve null y el handler corta en ≤ 5 s.
  */
 const TIMEOUT_MS = 5_000;
 

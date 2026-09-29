@@ -1,37 +1,32 @@
 import { NextResponse } from "next/server";
+import { ROLES_CLINICOS, requerirUsuarioConCentro } from "@/lib/auth";
 import {
   crearSolicitud,
   listarSolicitudesDelCentro,
 } from "@/lib/db/solicitudes";
-import {
-  errorInterno,
-  errorValidacion,
-  noAutenticado,
-  sinPermiso,
-} from "@/lib/http";
+import { responderError } from "@/lib/errores";
+import { errorValidacion } from "@/lib/http";
 import {
   crearSolicitudSchema,
   filtroSolicitudesSchema,
 } from "@/lib/schemas/solicitud-traslado";
-import { getSesion } from "@/lib/sesion";
 
 /**
- * GET /api/solicitudes
+ * GET /api/solicitudes — las solicitudes del centro del usuario (HU06, HU07).
  *
- * Lista las solicitudes del centro del usuario. Filtros opcionales:
  *   ?rol=origen|destino   — solo las que salen de, o llegan a, su centro
- *   ?estado=APROBADA      — solo las que están en ese estado
+ *   ?estado=EVALUANDO     — solo las que están en ese estado
  *
- * La combinación `?rol=destino&estado=APROBADA` es lo que resuelve HU06: son las
- * derivaciones que le asignaron al centro y todavía tiene que preparar.
+ * HU06 para el receptor: `?rol=destino&estado=EVALUANDO` son las que le
+ * propusieron y tiene que aprobar o rechazar; `&estado=APROBADA`, las que tiene
+ * que preparar.
  */
 export async function GET(request: Request) {
   try {
-    // 1. AUTORIZAR
-    const sesion = await getSesion(request);
-    if (!sesion) return noAutenticado();
+    // 1. SESIÓN (401), ROL clínico y CENTRO (403).
+    const usuario = await requerirUsuarioConCentro(ROLES_CLINICOS);
 
-    // 2. VALIDAR — los query params también son entrada externa.
+    // 2. VALIDAR — los query params también son entrada externa (400).
     const { searchParams } = new URL(request.url);
     const filtros = filtroSolicitudesSchema.safeParse({
       rol: searchParams.get("rol") ?? undefined,
@@ -39,46 +34,36 @@ export async function GET(request: Request) {
     });
     if (!filtros.success) return errorValidacion(filtros.error);
 
-    // 3. DELEGAR
+    // 3. DELEGAR — el centro sale de la sesión, nunca de la query.
     const solicitudes = await listarSolicitudesDelCentro({
-      centroSaludId: sesion.centroSaludId,
+      centroSaludId: usuario.centroSaludId,
       rol: filtros.data.rol,
       estado: filtros.data.estado,
     });
 
-    // 4. RESPONDER
     return NextResponse.json(solicitudes, { status: 200 });
   } catch (error) {
-    return errorInterno("GET /api/solicitudes", error);
+    return responderError("GET /api/solicitudes", error);
   }
 }
 
 /**
- * POST /api/solicitudes
+ * POST /api/solicitudes — registra una solicitud de traslado (HU01).
  *
- * Registra una solicitud de traslado. El body trae únicamente el DNI del paciente:
- * el centro de origen sale de la sesión, y el estado y la fecha los pone la base.
+ * El body trae solo el DNI: el centro de origen sale de la sesión, y el estado y
+ * la fecha los pone la base.
  */
 export async function POST(request: Request) {
   try {
-    // 1. VALIDAR
+    const usuario = await requerirUsuarioConCentro("MEDICO_DERIVANTE");
+
     const body: unknown = await request.json().catch(() => null);
     const datos = crearSolicitudSchema.safeParse(body);
     if (!datos.success) return errorValidacion(datos.error);
 
-    // 2. AUTORIZAR
-    const sesion = await getSesion(request);
-    if (!sesion) return noAutenticado();
-    if (sesion.rol !== "MEDICO_DERIVANTE") {
-      return sinPermiso("Solo un médico derivante puede crear solicitudes");
-    }
-
-    // 3. DELEGAR — la identidad va como parámetro, nunca dentro del body.
-    const solicitud = await crearSolicitud(datos.data, sesion.centroSaludId);
-
-    // 4. RESPONDER — 201 y el recurso creado, con su id.
+    const solicitud = await crearSolicitud(datos.data, usuario.centroSaludId);
     return NextResponse.json(solicitud, { status: 201 });
   } catch (error) {
-    return errorInterno("POST /api/solicitudes", error);
+    return responderError("POST /api/solicitudes", error);
   }
 }

@@ -1,47 +1,44 @@
 import { NextResponse } from "next/server";
+import { ROLES_CLINICOS, requerirUsuarioConCentro } from "@/lib/auth";
 import {
   obtenerSolicitudDelCentro,
   rechazarSolicitud,
 } from "@/lib/db/solicitudes";
+import { responderError } from "@/lib/errores";
+import { conflicto, noEncontrado, sinPermiso } from "@/lib/http";
 import {
-  conflicto,
-  errorInterno,
-  noAutenticado,
-  noEncontrado,
-  sinPermiso,
-} from "@/lib/http";
-import {
+  ladoQueRechaza,
   liberaCamaAlRechazar,
   rolesQuePuedenRechazar,
   transicionesPosibles,
 } from "@/lib/reglas-solicitud";
 import { unidadRequerida } from "@/lib/scoring-hospitales";
-import { getSesion } from "@/lib/sesion";
 
 type Contexto = { params: Promise<{ id: string }> };
 
 /**
  * POST /api/solicitudes/:id/rechazo — cancela una derivación (spec §6).
  *
- * Regla de dominio: una solicitud APROBADA ya no puede cancelarla el centro
- * emisor — el receptor reservó la cama y preparó el equipo. Antes de aprobarse,
- * cualquiera de los dos médicos puede echarse atrás.
- *
- * Sin body: el modelo no tiene dónde guardar un motivo de rechazo. Si hace falta,
- * es una migración y un campo nuevo, no un dato que se acepta y se tira.
+ * Una APROBADA ya no puede cancelarla el centro emisor: el receptor reservó la
+ * cama y preparó el equipo. Antes, cualquiera de los dos médicos puede hacerlo,
+ * cada uno desde su lado. Sin body: el modelo no guarda motivo de rechazo.
  */
-export async function POST(request: Request, { params }: Contexto) {
+export async function POST(_request: Request, { params }: Contexto) {
   try {
+    // 1-2. SESIÓN y ROL → 401 / 403
+    const usuario = await requerirUsuarioConCentro(ROLES_CLINICOS);
     const { id } = await params;
 
-    // 1. AUTORIZAR (sesión) → 401
-    const sesion = await getSesion(request);
-    if (!sesion) return noAutenticado();
-
-    const solicitud = await obtenerSolicitudDelCentro(id, sesion.centroSaludId);
+    // 3. PERTENENCIA → 404. Cada médico solo ve su lado de la derivación.
+    const lado = ladoQueRechaza(usuario.rol) ?? "origen";
+    const solicitud = await obtenerSolicitudDelCentro(
+      id,
+      usuario.centroSaludId,
+      lado,
+    );
     if (!solicitud) return noEncontrado("La solicitud no existe");
 
-    // 2. REGLAS de estado → 409: si nadie puede rechazarla, el rol no importa.
+    // 4. REGLAS de estado → 409: si nadie puede rechazarla, el rol no importa.
     const rolesHabilitados = rolesQuePuedenRechazar(solicitud.estado);
     if (rolesHabilitados.length === 0) {
       return conflicto("La solicitud no puede rechazarse en este estado", {
@@ -50,26 +47,16 @@ export async function POST(request: Request, { params }: Contexto) {
       });
     }
 
-    // 3. REGLAS de rol → 403: el estado admite el rechazo, pero no para este rol.
-    if (!rolesHabilitados.includes(sesion.rol)) {
+    // 5. REGLA de dominio sobre el rol → 403 (spec §6): el usuario ya sabe que
+    // la solicitud existe (es de su centro); lo que le falta es el permiso.
+    if (!rolesHabilitados.includes(usuario.rol)) {
       return sinPermiso(
-        solicitud.estado === "APROBADA"
-          ? "Una solicitud aprobada solo puede rechazarla el centro receptor"
-          : "Tu rol no puede rechazar esta solicitud",
+        "Una solicitud aprobada solo puede rechazarla el centro receptor",
         { rolesHabilitados },
       );
     }
 
-    // Cada médico rechaza desde su lado de la derivación.
-    const esSuLado =
-      sesion.rol === "MEDICO_DERIVANTE"
-        ? solicitud.centroOrigenId === sesion.centroSaludId
-        : solicitud.centroDestinoId === sesion.centroSaludId;
-    if (!esSuLado) {
-      return sinPermiso("Solo el centro que corresponde a tu rol puede rechazarla");
-    }
-
-    // 4. DELEGAR
+    // 6. DELEGAR
     const camaALiberar =
       liberaCamaAlRechazar(solicitud.estado) &&
       solicitud.centroDestinoId &&
@@ -85,15 +72,12 @@ export async function POST(request: Request, { params }: Contexto) {
       estadoLeido: solicitud.estado,
       camaALiberar,
     });
-
-    // null: otro usuario cambió el estado entre la lectura y la escritura.
     if (!rechazada) {
       return conflicto("La solicitud cambió de estado mientras se procesaba");
     }
 
-    // 5. RESPONDER
     return NextResponse.json(rechazada, { status: 200 });
   } catch (error) {
-    return errorInterno("POST /api/solicitudes/:id/rechazo", error);
+    return responderError("POST /api/solicitudes/:id/rechazo", error);
   }
 }

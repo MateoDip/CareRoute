@@ -1,14 +1,7 @@
 import { z } from "zod";
+import { idSchema } from "./comun";
 
-/**
- * Los ids los genera Prisma con `cuid()`, no son UUID. Validarlos con `.uuid()`
- * rechazaría el 100% de los ids reales.
- */
-export const idSchema = z
-  .string()
-  .trim()
-  .min(1, "El ID es obligatorio")
-  .max(64, "El ID es demasiado largo");
+export { idSchema };
 
 export const estadoSolicitudSchema = z.enum([
   "PENDIENTE",
@@ -40,8 +33,12 @@ export const filtroSolicitudesSchema = z.object({
   estado: estadoSolicitudSchema.optional(),
 });
 
-/** Body de POST /api/solicitudes/:id/aprobacion. */
-export const aprobarSolicitudSchema = z.object({
+/**
+ * Body de POST /api/solicitudes/:id/destino: el centro que el médico derivante
+ * eligió del ranking (HU04). La aprobación del receptor no lleva body: el destino
+ * ya está en la solicitud y el centro del receptor sale de su sesión.
+ */
+export const asignarDestinoSchema = z.object({
   centroDestinoId: idSchema,
 });
 
@@ -52,6 +49,7 @@ export const solicitudTrasladoSchema = z.object({
   centroDestinoId: idSchema.optional(),
   pacienteDni: pacienteDniSchema,
   estado: estadoSolicitudSchema,
+  fechaAprobacion: z.coerce.date().optional(),
   fechaSolicitud: z.coerce.date({
     required_error: "La fecha de solicitud es obligatoria",
     invalid_type_error: "Formato de fecha inválido",
@@ -60,5 +58,6 @@ export const solicitudTrasladoSchema = z.object({
 
 export type CrearSolicitud = z.infer<typeof crearSolicitudSchema>;
 export type ActualizarSolicitud = z.infer<typeof actualizarSolicitudSchema>;
+export type AsignarDestino = z.infer<typeof asignarDestinoSchema>;
 export type FiltroSolicitudes = z.infer<typeof filtroSolicitudesSchema>;
 export type SolicitudTraslado = z.infer<typeof solicitudTrasladoSchema>;

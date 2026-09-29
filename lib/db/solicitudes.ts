@@ -1,4 +1,9 @@
-import type { EstadoSolicitud, Prisma, TipoUnidad } from "@prisma/client";
+import type {
+  EstadoSolicitud,
+  OrigenNivelUrgencia,
+  Prisma,
+  TipoUnidad,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
   ActualizarSolicitud,
@@ -7,14 +12,18 @@ import type {
 import type { EvaluacionAGuardar } from "@/lib/schemas/evaluacion-triaje";
 
 /**
- * Capa de consultas.
+ * Capa de consultas de SolicitudTraslado.
  *
- * Reglas de la clase que se respetan acá:
+ * Reglas que se respetan acá:
  *  - Este archivo no conoce el objeto Request. Recibe datos, devuelve datos.
- *  - Todo listado lleva `take`: sin límite, una consulta puede traer decenas de
- *    miles de filas y tumbar el servidor.
- *  - Todo `select` es explícito: lo que no se selecciona no se puede filtrar por
- *    accidente. En un sistema con datos de pacientes eso importa.
+ *  - La pertenencia se resuelve en el `where` (clase 6): toda consulta que
+ *    devuelve una solicitud recibe el centro del usuario de la sesión. Si no es
+ *    suya, devuelve null y el handler responde 404 — nunca un `if` en route.ts.
+ *  - Todo listado lleva `take` y todo `select` es explícito: lo que no se
+ *    selecciona no se puede filtrar por accidente. Hay datos de pacientes.
+ *  - Las escrituras que dependen del estado son condicionales (`updateMany` con
+ *    el estado esperado en el `where`): si otro usuario cambió la solicitud en el
+ *    medio, no se pisa nada y se devuelve null.
  */
 
 const LIMITE_LISTADO = 50;
@@ -26,7 +35,31 @@ const camposSolicitud = {
   pacienteDni: true,
   estado: true,
   fechaSolicitud: true,
+  fechaAprobacion: true,
 } satisfies Prisma.SolicitudTrasladoSelect;
+
+const camposEvaluacion = {
+  id: true,
+  frecuenciaCardiaca: true,
+  presionSistolica: true,
+  presionDiastolica: true,
+  nivelUrgenciaSugerido: true,
+  origenNivel: true,
+} satisfies Prisma.EvaluacionTriajeSelect;
+
+/** Desde qué lado de la derivación mira el usuario. */
+export type LadoDerivacion = "cualquiera" | "origen" | "destino";
+
+function filtroPorLado(
+  centroSaludId: string,
+  lado: LadoDerivacion,
+): Prisma.SolicitudTrasladoWhereInput {
+  if (lado === "origen") return { centroOrigenId: centroSaludId };
+  if (lado === "destino") return { centroDestinoId: centroSaludId };
+  return {
+    OR: [{ centroOrigenId: centroSaludId }, { centroDestinoId: centroSaludId }],
+  };
+}
 
 export async function listarSolicitudesDelCentro(params: {
   centroSaludId: string;
@@ -35,20 +68,10 @@ export async function listarSolicitudesDelCentro(params: {
 }) {
   const { centroSaludId, rol, estado } = params;
 
-  const filtroCentro: Prisma.SolicitudTrasladoWhereInput =
-    rol === "origen"
-      ? { centroOrigenId: centroSaludId }
-      : rol === "destino"
-        ? { centroDestinoId: centroSaludId }
-        : {
-            OR: [
-              { centroOrigenId: centroSaludId },
-              { centroDestinoId: centroSaludId },
-            ],
-          };
-
   return prisma.solicitudTraslado.findMany({
-    where: estado ? { AND: [filtroCentro, { estado }] } : filtroCentro,
+    where: {
+      AND: [filtroPorLado(centroSaludId, rol ?? "cualquiera"), estado ? { estado } : {}],
+    },
     select: camposSolicitud,
     orderBy: { fechaSolicitud: "desc" },
     take: LIMITE_LISTADO,
@@ -56,65 +79,38 @@ export async function listarSolicitudesDelCentro(params: {
 }
 
 /**
- * Devuelve la solicitud solo si el centro del usuario está involucrado.
+ * La solicitud, solo si el centro del usuario está del lado pedido.
  *
- * Si no lo está, devuelve `null` — y el handler responde 404, no 403. Así no se
- * confirma la existencia de recursos que el usuario no puede ver.
+ *  - "cualquiera": origen o destino (lecturas: ficha, bitácora, ranking).
+ *  - "origen": lo que hace el médico derivante (corregir, triaje, elegir destino).
+ *  - "destino": lo que hace el médico receptor (aprobar).
+ *
+ * null significa "no existe" o "no es de tu centro": el handler responde 404 en
+ * los dos casos, a propósito. Un 403 confirmaría que el id es real.
  */
 export async function obtenerSolicitudDelCentro(
   id: string,
   centroSaludId: string,
+  lado: LadoDerivacion = "cualquiera",
 ) {
   return prisma.solicitudTraslado.findFirst({
-    where: {
-      id,
-      OR: [
-        { centroOrigenId: centroSaludId },
-        { centroDestinoId: centroSaludId },
-      ],
-    },
+    where: { id, ...filtroPorLado(centroSaludId, lado) },
     select: {
       ...camposSolicitud,
-      evaluacionTriaje: {
+      evaluacionTriaje: { select: camposEvaluacion },
+      asignacionesTripulacion: {
         select: {
-          id: true,
-          frecuenciaCardiaca: true,
-          presionSistolica: true,
-          presionDiastolica: true,
-          nivelUrgenciaSugerido: true,
+          asignadaEn: true,
+          tripulacionMedica: {
+            select: {
+              id: true,
+              patenteAmbulancia: true,
+              paramedicoResponsable: true,
+              estado: true,
+            },
+          },
         },
-      },
-    },
-  });
-}
-
-/**
- * La solicitud tal como la ve un centro que podría recibirla (HU04).
- *
- * Además de las solicitudes donde su centro ya está involucrado, el receptor ve
- * las que todavía no tienen destino asignado: son las que puede aceptar. Sin
- * esto, `obtenerSolicitudDelCentro` le devolvería null a cualquier derivación
- * nueva y la aprobación respondería siempre 404.
- *
- * Una solicitud ya asignada a otro centro sigue devolviendo null → 404.
- */
-export async function obtenerSolicitudParaRecepcion(
-  id: string,
-  centroSaludId: string,
-) {
-  return prisma.solicitudTraslado.findFirst({
-    where: {
-      id,
-      OR: [
-        { centroOrigenId: centroSaludId },
-        { centroDestinoId: centroSaludId },
-        { centroDestinoId: null },
-      ],
-    },
-    select: {
-      ...camposSolicitud,
-      evaluacionTriaje: {
-        select: { id: true, nivelUrgenciaSugerido: true },
+        orderBy: { asignadaEn: "asc" },
       },
     },
   });
@@ -133,40 +129,71 @@ export async function crearSolicitud(
   });
 }
 
-export async function actualizarSolicitud(
-  id: string,
-  datos: ActualizarSolicitud,
-) {
-  return prisma.solicitudTraslado.update({
-    where: { id },
+/** Corrige datos solo si sigue PENDIENTE y es del centro de origen. Si no, null. */
+export async function actualizarSolicitudPendiente(params: {
+  id: string;
+  centroOrigenId: string;
+  datos: ActualizarSolicitud;
+}) {
+  const { id, centroOrigenId, datos } = params;
+  const { count } = await prisma.solicitudTraslado.updateMany({
+    where: { id, centroOrigenId, estado: "PENDIENTE" },
     data: datos,
+  });
+  if (count === 0) return null;
+
+  return prisma.solicitudTraslado.findUnique({
+    where: { id },
     select: camposSolicitud,
   });
 }
 
+/**
+ * Guarda la evaluación y pasa la solicitud a EVALUANDO, las dos cosas o ninguna.
+ *
+ * El cambio de estado es condicional (solo desde PENDIENTE) y va primero: si dos
+ * médicos mandan el triaje a la vez, el segundo no pasa el `where`, se devuelve
+ * null (→ 409) y nunca llega a chocar con el @unique de `solicitudId` (→ 500).
+ */
 export async function registrarEvaluacion(
   solicitudId: string,
-  datos: EvaluacionAGuardar,
+  datos: EvaluacionAGuardar & { origenNivel: OrigenNivelUrgencia },
 ) {
   return prisma.$transaction(async (tx) => {
-    const evaluacion = await tx.evaluacionTriaje.create({
-      data: { solicitudId, ...datos },
-      select: {
-        id: true,
-        solicitudId: true,
-        frecuenciaCardiaca: true,
-        presionSistolica: true,
-        presionDiastolica: true,
-        nivelUrgenciaSugerido: true,
-      },
-    });
-
-    await tx.solicitudTraslado.update({
-      where: { id: solicitudId },
+    const { count } = await tx.solicitudTraslado.updateMany({
+      where: { id: solicitudId, estado: "PENDIENTE" },
       data: { estado: "EVALUANDO" },
     });
+    if (count === 0) return null;
 
-    return evaluacion;
+    return tx.evaluacionTriaje.create({
+      data: { solicitudId, ...datos },
+      select: { ...camposEvaluacion, solicitudId: true },
+    });
+  });
+}
+
+/**
+ * El médico derivante elige el centro de destino del ranking (HU04).
+ *
+ * Condicional a EVALUANDO y al centro de origen: una vez aprobada, el destino ya
+ * reservó la cama y no se cambia. Devuelve null si no pasó el `where`.
+ */
+export async function asignarDestino(params: {
+  solicitudId: string;
+  centroOrigenId: string;
+  centroDestinoId: string;
+}) {
+  const { solicitudId, centroOrigenId, centroDestinoId } = params;
+  const { count } = await prisma.solicitudTraslado.updateMany({
+    where: { id: solicitudId, centroOrigenId, estado: "EVALUANDO" },
+    data: { centroDestinoId },
+  });
+  if (count === 0) return null;
+
+  return prisma.solicitudTraslado.findUnique({
+    where: { id: solicitudId },
+    select: camposSolicitud,
   });
 }
 
@@ -185,39 +212,58 @@ export async function listarBitacora(solicitudId: string) {
   });
 }
 
+/** Se lanza adentro de la transacción solo para deshacerla. Nunca sale de acá. */
+class SinCamaAlReservar extends Error {}
+
+export type ResultadoAprobacion =
+  | { resultado: "APROBADA"; solicitud: Prisma.SolicitudTrasladoGetPayload<{ select: typeof camposSolicitud }> }
+  | { resultado: "ESTADO_CAMBIO" }
+  | { resultado: "SIN_CAMA" };
+
 /**
- * Operación del flujo principal (HU04).
+ * Operación del flujo principal (HU04): el receptor confirma, se reserva la cama
+ * y la solicitud pasa a APROBADA con fecha y hora de la decisión (HU04).
  *
- * Asigna el centro destino, reserva una cama y pasa la solicitud a APROBADA. Las
- * tres cosas ocurren dentro de una transacción: si falla cualquiera, no queda una
- * solicitud aprobada sin cama reservada ni una cama descontada sin aprobación.
+ * Todo o nada, en una transacción:
+ *  1. Cambio de estado condicional (EVALUANDO y destino = su centro). Si no pasa,
+ *     otro usuario la cambió en el medio → ESTADO_CAMBIO.
+ *  2. Descuento de cama condicional (`camasDisponibles > 0`). Si otro médico tomó
+ *     la última cama entre la verificación y este punto, se deshace el paso 1
+ *     → SIN_CAMA. Es el caso de error "en el instante exacto de la confirmación".
  *
- * El descuento es condicional (`camasDisponibles > 0`): si entre la verificación
- * del handler y este punto otro médico tomó la última cama, no se descuenta nada
- * y se devuelve null. Es el caso de error de H3 — "sin camas en el instante
- * exacto de la confirmación" — y el handler lo traduce a 409. No es una
- * excepción: es un resultado posible.
+ * Los dos resultados negativos son esperados: se devuelven, no se lanzan.
  */
 export async function aprobarSolicitud(params: {
   solicitudId: string;
   centroDestinoId: string;
   unidadId: string;
-}) {
+}): Promise<ResultadoAprobacion> {
   const { solicitudId, centroDestinoId, unidadId } = params;
 
-  return prisma.$transaction(async (tx) => {
-    const reserva = await tx.unidadCuidados.updateMany({
-      where: { id: unidadId, camasDisponibles: { gt: 0 } },
-      data: { camasDisponibles: { decrement: 1 } },
-    });
-    if (reserva.count === 0) return null;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const cambio = await tx.solicitudTraslado.updateMany({
+        where: { id: solicitudId, centroDestinoId, estado: "EVALUANDO" },
+        data: { estado: "APROBADA", fechaAprobacion: new Date() },
+      });
+      if (cambio.count === 0) return { resultado: "ESTADO_CAMBIO" as const };
 
-    return tx.solicitudTraslado.update({
-      where: { id: solicitudId },
-      data: { centroDestinoId, estado: "APROBADA" },
-      select: camposSolicitud,
+      const reserva = await tx.unidadCuidados.updateMany({
+        where: { id: unidadId, camasDisponibles: { gt: 0 } },
+        data: { camasDisponibles: { decrement: 1 } },
+      });
+      if (reserva.count === 0) throw new SinCamaAlReservar();
+
+      const solicitud = await tx.solicitudTraslado.findUniqueOrThrow({
+        where: { id: solicitudId },
+        select: camposSolicitud,
+      });
+      return { resultado: "APROBADA" as const, solicitud };
     });
-  });
+  } catch (error) {
+    if (error instanceof SinCamaAlReservar) return { resultado: "SIN_CAMA" };
+    throw error;
+  }
 }
 
 /**

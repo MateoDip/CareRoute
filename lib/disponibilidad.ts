@@ -1,7 +1,7 @@
 import type { TipoUnidad } from "@prisma/client";
 
 /**
- * Reglas de capacidad de camas (spec §6, H3).
+ * Reglas de capacidad de camas (spec §6, HU04).
  *
  * Vive en lib/ y no en lib/db/: no importa Prisma ni Next, no lee la base y no
  * mira el reloj. Recibe datos, devuelve datos. Se prueba llamándola.
@@ -50,7 +50,7 @@ export type CentroConCapacidad = {
 };
 
 /**
- * Los centros que pueden recibir al paciente (criterio de aceptación de H3:
+ * Los centros que pueden recibir al paciente (criterio de aceptación de HU03:
  * solo se muestran los que tienen cama del tipo requerido).
  *
  * El centro de origen se excluye: derivar a uno mismo no es una derivación.

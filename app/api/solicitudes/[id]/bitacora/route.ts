@@ -1,41 +1,31 @@
 import { NextResponse } from "next/server";
+import { ROLES_CLINICOS, requerirUsuarioConCentro } from "@/lib/auth";
 import { listarBitacora, obtenerSolicitudDelCentro } from "@/lib/db/solicitudes";
-import {
-  errorInterno,
-  noAutenticado,
-  noEncontrado,
-} from "@/lib/http";
-import { getSesion } from "@/lib/sesion";
+import { responderError } from "@/lib/errores";
+import { noEncontrado } from "@/lib/http";
 
 type Contexto = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/solicitudes/:id/bitacora — historial de eventos del traslado (HU07).
  *
- * Va anidado porque un RegistroBitacora no significa nada fuera de su solicitud:
- * "llegada a origen, 14:32" sin saber de qué traslado es información inútil. El
- * schema lo confirma — `solicitudId` es obligatorio, no puede haber registros
- * huérfanos.
+ * Se verifica el acceso a la solicitud antes de listar sus hijos: sin esto, la
+ * bitácora sería una puerta lateral para leer datos de otro centro.
  *
- * El POST que agrega eventos es parte del seguimiento del traslado (transiciones a
- * EN_CURSO y FINALIZADA), que no está en el contrato de docs/api.md todavía. Ver
- * docs/adr/0002.
+ * Registrar eventos (y pasar a EN_CURSO / FINALIZADA) queda fuera del contrato
+ * actual: ver docs/adr/0002.
  */
-export async function GET(request: Request, { params }: Contexto) {
+export async function GET(_request: Request, { params }: Contexto) {
   try {
+    const usuario = await requerirUsuarioConCentro(ROLES_CLINICOS);
     const { id } = await params;
 
-    const sesion = await getSesion(request);
-    if (!sesion) return noAutenticado();
-
-    // Se verifica el acceso a la solicitud antes de listar sus hijos: sin esto, la
-    // bitácora sería una puerta lateral para leer datos de otro centro.
-    const solicitud = await obtenerSolicitudDelCentro(id, sesion.centroSaludId);
+    const solicitud = await obtenerSolicitudDelCentro(id, usuario.centroSaludId);
     if (!solicitud) return noEncontrado("La solicitud no existe");
 
     const registros = await listarBitacora(id);
     return NextResponse.json(registros, { status: 200 });
   } catch (error) {
-    return errorInterno("GET /api/solicitudes/:id/bitacora", error);
+    return responderError("GET /api/solicitudes/:id/bitacora", error);
   }
 }

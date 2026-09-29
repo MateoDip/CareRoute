@@ -12,7 +12,7 @@ import {
  *  1. Timeout siempre: `AbortSignal.timeout` corta el pedido y también la lectura
  *     del body. Sin esto, si OpenAI se cuelga, el request del médico se cuelga.
  *  2. Devuelve, no lanza: ante cualquier falla devuelve `null`. Qué hacer con ese
- *     null lo decide el handler (acá es 502 e ingreso manual, H2).
+ *     null lo decide el handler (acá es 502 e ingreso manual, HU02).
  *  3. La credencial vive acá y solo acá: `OPENAI_API_KEY`, sin `NEXT_PUBLIC_`.
  *  4. Loguea la falla con contexto (el id de la solicitud y el error del
  *     proveedor), nunca los signos vitales: AGENTS.md §2.3.

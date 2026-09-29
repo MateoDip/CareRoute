@@ -29,9 +29,9 @@ export const signosVitalesSchema = z.object({
 /**
  * Body de POST /api/solicitudes/:id/evaluacion.
  *
- * `nivelUrgenciaSugerido` es opcional (clase 7, H2):
+ * `nivelUrgenciaSugerido` es opcional (clase 7, HU02):
  *  - si NO viene, el servidor se lo pide a la IA (lib/servicios/openai.ts);
- *  - si viene, es el ingreso manual del médico — el camino que indica H2 cuando
+ *  - si viene, es el ingreso manual del médico — el camino que indica HU02 cuando
  *    la IA falla o tarda más de 10 segundos — y no se llama a la IA.
  */
 export const crearEvaluacionSchema = signosVitalesSchema.extend({
