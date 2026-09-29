@@ -4,7 +4,7 @@ import type {
   ActualizarSolicitud,
   CrearSolicitud,
 } from "@/lib/schemas/solicitud-traslado";
-import type { CrearEvaluacion } from "@/lib/schemas/evaluacion-triaje";
+import type { EvaluacionAGuardar } from "@/lib/schemas/evaluacion-triaje";
 
 /**
  * Capa de consultas.
@@ -146,7 +146,7 @@ export async function actualizarSolicitud(
 
 export async function registrarEvaluacion(
   solicitudId: string,
-  datos: CrearEvaluacion,
+  datos: EvaluacionAGuardar,
 ) {
   return prisma.$transaction(async (tx) => {
     const evaluacion = await tx.evaluacionTriaje.create({

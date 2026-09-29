@@ -131,13 +131,26 @@ Esta lista es **igual para todos los proyectos**: no hay que adaptarla, hay que 
 
 ## 8. Integración externa
 
-**Cuál:** OpenAI API (`gpt-4o-mini`, endpoint `/v1/chat/completions`). Ver [ADR 0003](./adr/0003-api-externa-triaje.md).
-**Para qué:** Sugerir el nivel de urgencia de la derivación basándose en los signos vitales ingresados.
-**Qué pasa si se cae:** El sistema oculta la sugerencia y obliga al médico derivante a ingresar el nivel de urgencia manualmente.
+### 8.1 OpenAI — sugerencia de urgencia (implementada, clase 7)
 
-**Cuál (2):** Evolution API (WhatsApp). Ver [ADR 0004](./adr/0004-notificaciones-whatsapp.md).
-**Para qué:** Notificar al centro de salud correspondiente cuando la IA sugiere o se confirma un traslado.
-**Qué pasa si se cae:** El traslado sigue su curso; la notificación no es bloqueante y queda registrada en `RegistroBitacora`.
+**Cuál:** OpenAI API, `POST /v1/chat/completions`, modelo `gpt-4o-mini` con Structured Outputs. Ver [ADR 0003](./adr/0003-api-externa-triaje.md).
+**Para qué:** Sugerir el nivel de urgencia (BAJO, MEDIO, ALTO, CRÍTICO) a partir de los signos vitales de la `EvaluacionTriaje` (H2). Solo viajan los tres signos vitales: nunca el DNI ni otro dato que identifique al paciente.
+**Dónde vive:** `lib/servicios/openai.ts`, único archivo que conoce la URL y la credencial (`OPENAI_API_KEY`, solo servidor). Timeout de 8 s, para cumplir los 10 s de RNF01 con margen.
+
+**Qué pasa si falla** (clave inválida, cuota agotada, OpenAI caído o más de 8 s sin responder):
+
+| Operación afectada | Esencial o accesoria | Qué hace el sistema | Qué ve el usuario |
+|---|---|---|---|
+| `POST /api/solicitudes/:id/evaluacion` **sin** nivel manual | **Esencial**: sin nivel no hay evaluación que guardar | Llama a OpenAI **antes** de guardar. Si falla, responde `502` y no guarda nada: la solicitud sigue `PENDIENTE`, sin evaluación. Loguea el error del proveedor con el id de la solicitud | "No pudimos obtener la sugerencia de urgencia: el servicio de IA no respondió. Elegí el nivel manualmente y volvé a enviar la evaluación." + la lista de niveles para elegir |
+| `POST /api/solicitudes/:id/evaluacion` **con** nivel manual | No usa el servicio | Guarda con el nivel que eligió el médico (caso de error de H2) | La evaluación registrada, con `origenNivel: "MANUAL"` |
+| Resto de la API (ranking, aprobación, rechazo, disponibilidad) | No usan el servicio | Funcionan igual | Nada distinto |
+
+### 8.2 Evolution API (WhatsApp) — notificaciones (pendiente)
+
+**Cuál:** Evolution API. Ver [ADR 0004](./adr/0004-notificaciones-whatsapp.md).
+**Para qué:** Avisar al centro de destino cuando se aprueba un traslado (HU06).
+**Qué pasa si se cae:** Es **accesoria**: se llama **después** de aprobar, el traslado queda `APROBADA` igual y la respuesta es `201`. El receptor se entera por el listado (`GET /api/solicitudes?rol=destino&estado=APROBADA`).
+**Estado:** no implementada. Necesita la migración que agrega `telefonoNotificacion` a `CentroSalud` (ADR 0004).
 
 ## 9. Fuera de alcance
 

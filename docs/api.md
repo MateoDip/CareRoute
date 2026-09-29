@@ -19,7 +19,7 @@ Todos los endpoints viven bajo `/api` y devuelven JSON.
 | GET | `/api/solicitudes/:id` | Ficha de una solicitud con su evaluación de triaje | HU07 | Autenticado del centro involucrado | 401 · 404 no existe o no es de su centro |
 | PATCH | `/api/solicitudes/:id` | Corrige datos de la solicitud. Solo mientras esté `PENDIENTE` | — | MEDICO_DERIVANTE del centro de origen | 400 · 401 · 403 · 404 · 409 estado no editable |
 | GET | `/api/solicitudes/:id/bitacora` | Historial de eventos del traslado | HU07 | Autenticado del centro involucrado | 401 · 404 |
-| POST | `/api/solicitudes/:id/evaluacion` | Registra la evaluación de triaje con el nivel de urgencia sugerido | HU02 | MEDICO_DERIVANTE del centro de origen | 400 · 401 · 403 · 404 · 409 ya tiene evaluación |
+| POST | `/api/solicitudes/:id/evaluacion` | Registra la evaluación de triaje. Si el body no trae `nivelUrgenciaSugerido`, lo sugiere la IA (OpenAI); si lo trae, es el ingreso manual | HU02 | MEDICO_DERIVANTE del centro de origen | 400 · 401 · 403 · 404 · 409 ya tiene evaluación · 502 la IA no respondió |
 | GET | `/api/solicitudes/:id/candidatos` | Ranking de centros candidatos para esta derivación | HU03 | Autenticado del centro involucrado | 401 · 404 · 409 sin evaluación de triaje |
 | **POST** | **`/api/solicitudes/:id/aprobacion`** | **Confirma la derivación: asigna centro destino, reserva la cama y pasa a `APROBADA`** | **HU04** | **MEDICO_RECEPTOR del centro destino** | **400 · 401 · 403 · 404 · 409 estado incompatible, sin evaluación o sin cama** |
 | POST | `/api/solicitudes/:id/rechazo` | Cancela la derivación. Si estaba `APROBADA`, devuelve la cama reservada | spec §6 | MEDICO_DERIVANTE del origen o MEDICO_RECEPTOR del destino (una `APROBADA`, solo el receptor) | 401 · 403 rol o centro que no corresponde · 404 · 409 estado terminal |
@@ -119,6 +119,7 @@ handlers le preguntan; no tienen listas de estados propias.
 | `403` | Con sesión, sin permiso para esta acción |
 | `404` | No existe, o pertenece a otro centro |
 | `409` | Existe, pero su estado no admite la operación |
+| `502` | Un servicio externo del que depende la operación no respondió (clase 7). No es un bug nuestro (500) ni un problema del estado (409): reintentar o seguir por el camino manual lo resuelve |
 
 No se usa `200` con `{ ok: false }`. El status es parte de la respuesta.
 
@@ -139,6 +140,7 @@ buscar el estado del sistema, es una regla.
 | `POST /api/solicitudes/:id/evaluacion` | Presión, saturación o frecuencia fuera de rango fisiológico | 400 | Zod | "Datos inválidos" + `detalles` |
 | `POST /api/solicitudes/:id/evaluacion` | La solicitud ya tiene evaluación (relación 1 a 1) | 409 | regla | "La solicitud ya fue evaluada" + `estadoActual` |
 | `POST /api/solicitudes/:id/evaluacion` | La solicitud está `RECHAZADA` (no puede volver a `EVALUANDO`) | 409 | regla | "La solicitud no puede evaluarse en este estado" + `estadoActual` + `transicionesPosibles` |
+| `POST /api/solicitudes/:id/evaluacion` | Sin nivel manual, y OpenAI falla, tarda más de 8 s o la credencial es inválida (H2, spec §8) | 502 | servicio externo | "No pudimos obtener la sugerencia de urgencia: el servicio de IA no respondió. Elegí el nivel manualmente y volvé a enviar la evaluación." + `ingresoManualRequerido` + `nivelesPosibles` |
 | `POST /api/solicitudes/:id/evaluacion` | El médico corrige la urgencia sugerida por la IA sin dejar registro (spec §6) | — | postergada | Ver [ADR 0002](./adr/0002-reglas-que-esperan-una-migracion.md) |
 | `PATCH /api/unidades/:id` | Camas negativas (H4) | 400 | Zod | "Datos inválidos" + `detalles` |
 | `PATCH /api/solicitudes/:id` | La solicitud ya no está `PENDIENTE` | 409 | regla | "Solo se pueden corregir solicitudes pendientes" + `estadoActual` |
@@ -193,6 +195,18 @@ decir qué sí se puede obliga al cliente a adivinar.
 Los tres son **funciones puras**: no importan Prisma ni Next, no leen la base y
 no llaman a `new Date()`. Por eso se prueban con `npm test` en milisegundos, sin
 levantar servidor ni base.
+
+### Servicios externos (clase 7)
+
+`lib/servicios/` es el único lugar del proyecto que habla con terceros. Cada módulo
+tiene timeout (`AbortSignal.timeout`), nunca lanza —devuelve `null`— y loguea la
+falla. El handler decide qué significa ese `null`:
+
+| Módulo | Operación | Esencial o accesoria | Si devuelve `null` |
+|---|---|---|---|
+| `lib/servicios/openai.ts` | `POST /api/solicitudes/:id/evaluacion` sin nivel manual | Esencial: se llama **antes** de guardar | `502` con `ingresoManualRequerido`; no se guarda nada |
+
+Qué pasa en cada caso de falla y qué ve el usuario está en `docs/spec.md` §8.
 
 ### Errores esperados e inesperados
 

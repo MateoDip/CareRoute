@@ -1,6 +1,6 @@
 # ADR 0003 — API externa para sugerencia de triaje
 
-**Estado:** aceptada
+**Estado:** aceptada (implementada en la clase 7)
 **Fecha:** 2026-09-22
 **Decide:** Equipo (Mateo Duran, Nicolas Censi, Mateo Dip, Fernando Almansa)
 
@@ -31,8 +31,16 @@ Porque nos garantiza que la respuesta siempre cumple el schema que después vali
 
 ## Consecuencias
 
-- Se agrega `OPENAI_API_KEY` a las variables de entorno (server-only, nunca `NEXT_PUBLIC_`).
-- El llamado a la API vive en `lib/triaje/`, separado del resto de la lógica de negocio.
-- Si OpenAI falla o tarda más de 10s, el endpoint responde con `nivelUrgenciaSugerido: null`
-  y el frontend obliga al médico a elegir el nivel manualmente (ya contemplado en H2 del spec).
-- Si más adelante se cambia de proveedor, solo se toca `lib/triaje/`, no los route handlers.
+- Se agrega `OPENAI_API_KEY` a las variables de entorno (server-only, nunca `NEXT_PUBLIC_`),
+  en `.env.local` y en el panel de Vercel. `OPENAI_BASE_URL` es opcional y solo sirve para
+  probar la falla (apuntarla a una IP que no responde).
+- El llamado vive en `lib/servicios/openai.ts` (`sugerirNivelUrgencia`), separado del resto
+  de la lógica de negocio. Es el único archivo que conoce la URL y la credencial.
+- Timeout de 8 s con `AbortSignal.timeout`: deja margen para cumplir los 10 s de RNF01.
+- El módulo nunca lanza: ante cualquier falla devuelve `null` y loguea el error del
+  proveedor (con el id de la solicitud, nunca los signos vitales).
+- Para `POST /api/solicitudes/:id/evaluacion` el servicio es **esencial**: si falla, el
+  endpoint responde `502` sin guardar nada y pide el nivel manual (H2). Si el médico ya
+  manda el nivel, no se llama a OpenAI. Detalle en `docs/spec.md` §8.
+- Si más adelante se cambia de proveedor, solo se toca `lib/servicios/openai.ts`, no los
+  route handlers.

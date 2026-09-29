@@ -148,7 +148,7 @@ está en [`docs/api.md`](./docs/api.md). La tabla de permisos por rol está en [
 | ORM | Prisma 6 (`prisma.config.ts` en la raíz) |
 | Base de datos | PostgreSQL en Supabase (región São Paulo · `sa-east-1`) |
 | Auth | Supabase Auth |
-| IA | API de modelo de lenguaje para interpretar la descripción clínica |
+| IA | OpenAI (`gpt-4o-mini`) para sugerir el nivel de urgencia — `lib/servicios/openai.ts` |
 | Tests | Vitest |
 | Deploy | Vercel |
 | CI | GitHub Actions — lint, typecheck y build en cada Pull Request |
@@ -176,7 +176,7 @@ cd CareRoute
 npm install            # el postinstall corre prisma generate
 ```
 
-Creá el archivo de entorno con las credenciales de Supabase (ver tabla abajo) y después:
+Copiá `.env.example` a `.env.local`, completalo con las credenciales (ver tabla abajo) y después:
 
 ```bash
 npx prisma migrate deploy   # aplica las migraciones ya versionadas
@@ -209,7 +209,8 @@ proyecto de Supabase — nunca circulan por el repo, por un issue ni por un PR.
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (solo servidor, nunca en el cliente) |
 | `DATABASE_URL` | Supabase → Connect → ORM → Transaction pooler (puerto 6543) |
 | `DIRECT_URL` | Supabase → Connect → Direct connection (puerto 5432), para migraciones |
-| `AI_API_KEY` | Panel del proveedor del modelo de lenguaje |
+| `OPENAI_API_KEY` | platform.openai.com → API keys. Solo servidor, nunca `NEXT_PUBLIC_`. Cargarla también en Vercel → Settings → Environment Variables |
+| `OPENAI_BASE_URL` | Opcional. Solo para probar el timeout del servicio externo (ver `docs/api.http`, clase 7) |
 
 `prisma.config.ts` define de qué archivo de entorno lee Prisma. Si las migraciones no
 encuentran la conexión, revisá ahí antes que nada.

@@ -7,6 +7,7 @@ import {
   conflicto,
   errorInterno,
   errorValidacion,
+  falloExterno,
   noAutenticado,
   noEncontrado,
   sinPermiso,
@@ -15,7 +16,11 @@ import {
   puedeTransicionar,
   transicionesPosibles,
 } from "@/lib/reglas-solicitud";
-import { crearEvaluacionSchema } from "@/lib/schemas/evaluacion-triaje";
+import {
+  crearEvaluacionSchema,
+  nivelUrgenciaSchema,
+} from "@/lib/schemas/evaluacion-triaje";
+import { sugerirNivelUrgencia } from "@/lib/servicios/openai";
 import { getSesion } from "@/lib/sesion";
 
 type Contexto = { params: Promise<{ id: string }> };
@@ -28,9 +33,16 @@ type Contexto = { params: Promise<{ id: string }> };
  * excepción de constraint y el endpoint devolvería 500 — y un 500 significa "bug
  * mío", no "el cliente pidió algo imposible".
  *
- * Hoy el nivel de urgencia lo manda el médico. La sugerencia de la IA y la
- * auditoría de su corrección manual (spec §6) esperan una migración: ver
- * docs/adr/0002. La regla de dominio no cambia: la IA sugiere, nunca decide.
+ * Nivel de urgencia (clase 7, H2, spec §8):
+ *  - Si el body NO trae `nivelUrgenciaSugerido`, se lo pide a OpenAI. Para esta
+ *    operación el servicio es ESENCIAL: sin nivel no hay evaluación que guardar.
+ *    Por eso se llama ANTES de guardar, y si falla se responde 502 sin tocar la
+ *    base; el médico reenvía con el nivel elegido a mano.
+ *  - Si el body lo trae, es el ingreso manual de H2 y no se llama a la IA.
+ *
+ * La auditoría de la corrección manual (spec §6) sigue esperando una migración:
+ * ver docs/adr/0002. La regla de dominio no cambia: la IA sugiere, nunca decide —
+ * la derivación la confirma un médico en /aprobacion.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -67,8 +79,28 @@ export async function POST(request: Request, { params }: Contexto) {
       });
     }
 
-    const evaluacion = await registrarEvaluacion(id, datos.data);
-    return NextResponse.json(evaluacion, { status: 201 });
+    // SERVICIO EXTERNO (esencial) → 502. Va después de las reglas: no se gasta
+    // una llamada a OpenAI para una solicitud que igual se iba a rechazar.
+    const { nivelUrgenciaSugerido: nivelManual, ...signos } = datos.data;
+    const nivel = nivelManual ?? (await sugerirNivelUrgencia(signos, id));
+    if (!nivel) {
+      return falloExterno(
+        "No pudimos obtener la sugerencia de urgencia: el servicio de IA no respondió. Elegí el nivel manualmente y volvé a enviar la evaluación.",
+        {
+          ingresoManualRequerido: true,
+          nivelesPosibles: nivelUrgenciaSchema.options,
+        },
+      );
+    }
+
+    const evaluacion = await registrarEvaluacion(id, {
+      ...signos,
+      nivelUrgenciaSugerido: nivel,
+    });
+    return NextResponse.json(
+      { ...evaluacion, origenNivel: nivelManual ? "MANUAL" : "IA" },
+      { status: 201 },
+    );
   } catch (error) {
     return errorInterno("POST /api/solicitudes/:id/evaluacion", error);
   }

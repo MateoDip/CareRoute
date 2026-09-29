@@ -43,6 +43,17 @@ export function conflicto(detalle: string, datos?: Record<string, unknown>) {
 }
 
 /**
+ * 502: el request y el estado están bien, pero un servicio externo del que depende
+ * la operación no respondió (clase 7). No es 500 porque no es un bug nuestro, y no
+ * es 409 porque reintentar más tarde puede funcionar.
+ *
+ * El mensaje dice qué hacer, no solo qué pasó: el usuario tiene que poder seguir.
+ */
+export function falloExterno(detalle: string, datos?: Record<string, unknown>) {
+  return NextResponse.json({ error: detalle, ...datos }, { status: 502 });
+}
+
+/**
  * 500: solo llega acá lo que no se previó. El detalle va al log del servidor,
  * nunca al cliente — un mensaje de Prisma revela tablas, columnas y a veces el SQL.
  */
