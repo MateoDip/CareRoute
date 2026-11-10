@@ -100,6 +100,10 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - El `catch` de cada handler es `return responderError("VERBO /ruta", error)`.
 - Orden: sesión (401) → rol / centro (403) → pertenencia (404) → body (400) → regla (409)
   → servicio externo (502) → escribir.
+- En las páginas, la primera línea es `requerirMedicoEnPagina()`: la misma autorización que los
+  handlers, traducida a navegación (sin sesión → `/ingresar`; sin centro o rol → `/sin-acceso`).
+  La pertenencia va en la consulta de `lib/db/` y, si devuelve null, `notFound()`: "no existe" y
+  "no es de tu centro" se ven igual.
 
 ### 2.6 Servicios externos
 
@@ -112,7 +116,11 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - Nombres de dominio en español y en camelCase (`solicitudTraslado`, `nivelUrgencia`); palabras
   clave y APIs del framework en inglés, como corresponde.
 - Componentes de React en `PascalCase`, hooks en `useCamelCase`, archivos en `kebab-case`.
-- Server Components por defecto; `"use client"` solo cuando hace falta estado o eventos.
+- Server Components por defecto; `"use client"` solo cuando hace falta estado o eventos, y en el
+  componente más chico posible, nunca en una página entera.
+- Las páginas leen con `await` a `lib/db/`; nunca `fetch` a la propia API ni `useEffect` + `fetch`.
+- Las props de un componente de cliente son serializables: las fechas viajan formateadas como
+  texto con `formatearFechaHora` (`lib/formato.ts`), que fija la hora argentina.
 - Sin `console.log` en el código que se mergea.
 - Antes de instalar una dependencia nueva, preguntá. No agregues librerías por conveniencia.
 - No reformatees archivos que no tocaste ni hagas refactors masivos no pedidos.
@@ -121,18 +129,25 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 
 ```
 app/
+  page.tsx                         listado de solicitudes del centro (Server Component)
+  solicitudes/[id]/page.tsx        ficha de la solicitud (Server Component)
+  ingresar/                        login: page.tsx + acciones.ts (Server Actions entrar / salir)
+  sin-acceso/page.tsx              cuenta sin centro o sin rol clínico
   api/<recurso>/route.ts           colección
   api/<recurso>/[id]/route.ts      individual
   api/<recurso>/[id]/<operación>/  operaciones del flujo (destino, aprobacion, rechazo…)
   auth/callback/route.ts           login con Google (público)
+components/
+  filtro-solicitudes.tsx           único componente con "use client"
 lib/
-  auth.ts                          sesión, rol y centro
+  auth.ts                          sesión, rol y centro (handlers y páginas)
   errores.ts                       responderError
   http.ts                          respuestas 400 / 403 de regla / 404 / 409 / 502
   db/                              consultas Prisma
   schemas/                         schemas de Zod (fuente de verdad de los tipos)
   servicios/                       servicios externos
-  supabase-server.ts, supabase-browser.ts   clientes de Supabase Auth
+  formato.ts                       fechas en hora argentina y etiquetas para pantalla
+  supabase-server.ts               cliente de Supabase Auth (solo servidor)
   reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas puras (+ .test.ts)
 prisma/
   schema.prisma, migrations/, seed.ts

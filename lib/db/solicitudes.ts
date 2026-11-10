@@ -47,6 +47,15 @@ const camposEvaluacion = {
   origenNivel: true,
 } satisfies Prisma.EvaluacionTriajeSelect;
 
+/**
+ * Solo el nombre de cada centro, para que el listado y la ficha digan "desde
+ * Hospital X" y no un id. Se suma en las lecturas, no en las escrituras.
+ */
+const camposCentros = {
+  centroOrigen: { select: { nombre: true } },
+  centroDestino: { select: { nombre: true } },
+} satisfies Prisma.SolicitudTrasladoSelect;
+
 /** Desde qué lado de la derivación mira el usuario. */
 export type LadoDerivacion = "cualquiera" | "origen" | "destino";
 
@@ -72,7 +81,7 @@ export async function listarSolicitudesDelCentro(params: {
     where: {
       AND: [filtroPorLado(centroSaludId, rol ?? "cualquiera"), estado ? { estado } : {}],
     },
-    select: camposSolicitud,
+    select: { ...camposSolicitud, ...camposCentros },
     orderBy: { fechaSolicitud: "desc" },
     take: LIMITE_LISTADO,
   });
@@ -97,6 +106,7 @@ export async function obtenerSolicitudDelCentro(
     where: { id, ...filtroPorLado(centroSaludId, lado) },
     select: {
       ...camposSolicitud,
+      ...camposCentros,
       evaluacionTriaje: { select: camposEvaluacion },
       asignacionesTripulacion: {
         select: {
