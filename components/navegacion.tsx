@@ -31,6 +31,14 @@ export function Navegacion({ nombre, rol }: Props) {
         >
           Entrantes
         </Link>
+        {rol === "MEDICO_DERIVANTE" && (
+          <Link
+            href="/solicitudes/nueva"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
+            Nueva solicitud
+          </Link>
+        )}
 
         <div className="ml-auto flex min-w-0 items-center gap-3">
           <p className="min-w-0 text-right text-sm leading-tight">

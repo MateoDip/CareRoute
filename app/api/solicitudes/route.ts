@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { ROLES_CLINICOS, requerirUsuarioConCentro } from "@/lib/auth";
-import {
-  crearSolicitud,
-  listarSolicitudesDelCentro,
-} from "@/lib/db/solicitudes";
+import { iniciarSolicitud } from "@/lib/casos/iniciar-solicitud";
+import { listarSolicitudesDelCentro } from "@/lib/db/solicitudes";
 import { responderError } from "@/lib/errores";
-import { errorValidacion } from "@/lib/http";
+import { errorValidacion, responderRechazo } from "@/lib/http";
 import {
   crearSolicitudSchema,
   filtroSolicitudesSchema,
@@ -61,8 +59,10 @@ export async function POST(request: Request) {
     const datos = crearSolicitudSchema.safeParse(body);
     if (!datos.success) return errorValidacion(datos.error);
 
-    const solicitud = await crearSolicitud(datos.data, usuario.centroSaludId);
-    return NextResponse.json(solicitud, { status: 201 });
+    // Las reglas viven en el caso de uso, que también usa la pantalla (clase 12).
+    const resultado = await iniciarSolicitud(usuario, datos.data);
+    if (!resultado.ok) return responderRechazo(resultado);
+    return NextResponse.json(resultado.valor, { status: 201 });
   } catch (error) {
     return responderError("POST /api/solicitudes", error);
   }

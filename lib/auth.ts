@@ -1,5 +1,5 @@
 import type { RolUsuario } from "@prisma/client";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { registrarUsuarioSiNoExiste } from "@/lib/db/usuarios";
 import { crearClienteSupabase } from "@/lib/supabase-server";
@@ -119,12 +119,17 @@ export async function requerirUsuarioConCentro(
 }
 
 /**
- * Para Server Components (clase 8): la MISMA autorización que los endpoints
- * clínicos — `requerirUsuarioConCentro(ROLES_CLINICOS)` —, traducida a
- * navegación en vez de a un status HTTP:
+ * Para pantallas y Server Actions (clases 8 y 12): la MISMA autorización que los
+ * endpoints clínicos — `requerirUsuarioConCentro` —, traducida a navegación en
+ * vez de a un status HTTP:
  *
  *  - sin sesión (la API respondería 401)             → /ingresar
  *  - sin centro o sin rol clínico (la API, 403)       → /sin-acceso
+ *  - médico, pero no del rol que pide la pantalla     → 404 (notFound)
+ *
+ * Con `rol`, es la primera línea de cada Server Action y de cada pantalla que
+ * escribe. El 404 es a propósito: la pantalla de otro rol no existe para él, como
+ * la solicitud de otro centro.
  *
  * La pertenencia de cada solicitud no se resuelve acá sino en la consulta, con
  * el centro que devuelve esta función (igual que en los handlers).
@@ -136,9 +141,10 @@ const usuarioClinicoDelRequest = cache(() =>
   requerirUsuarioConCentro(ROLES_CLINICOS),
 );
 
-export async function requerirMedicoEnPagina(): Promise<UsuarioConCentro> {
+export async function requerirMedicoEnPagina(rol?: Rol): Promise<UsuarioConCentro> {
+  let usuario: UsuarioConCentro;
   try {
-    return await usuarioClinicoDelRequest();
+    usuario = await usuarioClinicoDelRequest();
   } catch (error) {
     if (error instanceof NoAutenticado) redirect("/ingresar");
     if (error instanceof SinCentroAsignado || error instanceof NoAutorizado) {
@@ -146,4 +152,6 @@ export async function requerirMedicoEnPagina(): Promise<UsuarioConCentro> {
     }
     throw error;
   }
+  if (rol && usuario.rol !== rol) notFound();
+  return usuario;
 }

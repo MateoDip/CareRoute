@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import type { TipoUnidad } from "@prisma/client";
 import type { ZodError } from "zod";
+import type { MotivoDeRechazo, Rechazo } from "@/lib/casos/resultado";
 
 /**
  * Respuestas de error con forma uniforme.
@@ -22,10 +22,6 @@ export function errorValidacion(error: ZodError) {
   );
 }
 
-export function sinPermiso(detalle: string, datos?: Record<string, unknown>) {
-  return NextResponse.json({ error: detalle, ...datos }, { status: 403 });
-}
-
 export function noEncontrado(detalle = "El recurso no existe") {
   return NextResponse.json({ error: detalle }, { status: 404 });
 }
@@ -43,26 +39,33 @@ export function conflicto(detalle: string, datos?: Record<string, unknown>) {
 }
 
 /**
- * 409 de capacidad (caso de error de HU04). Lleva los tipos que sí tienen
- * cama como array aparte: la pantalla los necesita para recargar el ranking.
- */
-export function capacidadAgotada(
-  tipoRequerido: TipoUnidad,
-  tiposLibres: readonly TipoUnidad[],
-) {
-  return conflicto(
-    `Capacidad agotada: el centro de destino no tiene camas ${tipoRequerido} disponibles`,
-    { tipoRequerido, tiposConCamaLibre: tiposLibres },
-  );
-}
-
-/**
- * 502: el request y el estado están bien, pero un servicio externo del que depende
- * la operación no respondió (clase 7). No es 500 porque no es un bug nuestro, y no
- * es 409 porque reintentar más tarde puede funcionar.
+ * Qué status lleva cada motivo de rechazo de un caso de uso (clase 12).
  *
- * El mensaje dice qué hacer, no solo qué pasó: el usuario tiene que poder seguir.
+ * Es un Record y no un switch con default: si se agrega un motivo en
+ * lib/casos/resultado.ts, el typecheck falla hasta que alguien decida su código.
+ *
+ *  - 404: no existe o no es de su lado (no se distingue: un 403 confirmaría el id).
+ *  - 403: una regla de dominio le niega la acción a su rol sobre un dato suyo.
+ *  - 409: el pedido está bien, pero el estado del sistema no lo admite.
+ *  - 502: el servicio externo del que depende la operación no respondió (clase 7).
  */
-export function falloExterno(detalle: string, datos?: Record<string, unknown>) {
-  return NextResponse.json({ error: detalle, ...datos }, { status: 502 });
+export const STATUS_POR_MOTIVO: Record<MotivoDeRechazo, number> = {
+  NO_ENCONTRADA: 404,
+  CENTRO_INEXISTENTE: 404,
+  ROL_NO_HABILITADO: 403,
+  ESTADO_INCOMPATIBLE: 409,
+  YA_EVALUADA: 409,
+  FALTA_TRIAJE: 409,
+  DESTINO_IGUAL_A_ORIGEN: 409,
+  CAPACIDAD_AGOTADA: 409,
+  CAMBIO_CONCURRENTE: 409,
+  IA_NO_DISPONIBLE: 502,
+};
+
+/** El rechazo de un caso de uso como respuesta HTTP: mensaje en `error`, datos aparte. */
+export function responderRechazo(rechazo: Rechazo) {
+  return NextResponse.json(
+    { error: rechazo.mensaje, ...rechazo.datos },
+    { status: STATUS_POR_MOTIVO[rechazo.motivo] },
+  );
 }

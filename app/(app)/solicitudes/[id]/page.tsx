@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BotonAccion } from "@/components/boton-accion";
 import { BadgeEstado, BadgeNivel } from "@/components/estado-solicitud";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,9 @@ import {
   ETIQUETA_TRIPULACION,
   formatearFechaHora,
 } from "@/lib/formato";
+import { proximoPaso } from "@/lib/proximo-paso";
 import { cn } from "@/lib/utils";
+import { aprobarAction, rechazarAction } from "./acciones";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -37,6 +40,16 @@ export default async function DetalleSolicitud({ params }: Props) {
   const bitacora = await listarBitacora(solicitud.id);
   const triaje = solicitud.evaluacionTriaje;
 
+  // Qué botones ve este médico: experiencia de uso. Cada acción vuelve a
+  // verificar rol, lado y estado en su caso de uso.
+  const paso = proximoPaso({
+    rol: usuario.rol,
+    estado: solicitud.estado,
+    esOrigen: solicitud.centroOrigenId === usuario.centroSaludId,
+    esDestino: solicitud.centroDestinoId === usuario.centroSaludId,
+    tieneDestino: solicitud.centroDestinoId !== null,
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <Link href="/" className={cn(buttonVariants({ variant: "link" }), "self-start px-0")}>
@@ -52,6 +65,51 @@ export default async function DetalleSolicitud({ params }: Props) {
           {triaje && <BadgeNivel nivel={triaje.nivelUrgenciaSugerido} />}
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle as="h2">Qué sigue</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {paso.aviso && <p>{paso.aviso}</p>}
+          {paso.cargarTriaje && (
+            <Link href={`/solicitudes/${solicitud.id}/triaje`} className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto sm:self-start")}>
+              Cargar triaje
+            </Link>
+          )}
+          {paso.elegirDestino && (
+            <Link
+              href={`/solicitudes/${solicitud.id}/destino`}
+              className={cn(
+                buttonVariants({ size: "lg", variant: solicitud.centroDestinoId ? "outline" : "default" }),
+                "w-full sm:w-auto sm:self-start",
+              )}
+            >
+              {solicitud.centroDestinoId ? "Cambiar destino" : "Ver ranking y elegir destino"}
+            </Link>
+          )}
+          {paso.aprobar && (
+            <BotonAccion
+              accion={aprobarAction.bind(null, solicitud.id)}
+              texto="Aprobar y reservar cama"
+              textoPendiente="Aprobando…"
+            />
+          )}
+          {paso.rechazar && (
+            <BotonAccion
+              accion={rechazarAction.bind(null, solicitud.id)}
+              texto="Rechazar derivación"
+              textoPendiente="Rechazando…"
+              variante="outline"
+              confirmacion={
+                solicitud.estado === "APROBADA"
+                  ? "Se cancela la derivación y la cama reservada vuelve a quedar libre. No se puede deshacer."
+                  : "Se cancela la derivación. No se puede deshacer."
+              }
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
