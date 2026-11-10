@@ -15,4 +15,4 @@ build/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-"*.patch" 
+*.patch 
