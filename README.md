@@ -142,10 +142,16 @@ sesión, nunca del body, de un header ni de la query.
 
 ```
 app/
+  page.tsx             listado de solicitudes del centro
+  solicitudes/[id]/    ficha de la solicitud
+  ingresar/            login con Google (Server Actions)
+  sin-acceso/          cuenta sin centro o sin rol clínico
   api/                 route handlers (JSON)
   auth/callback/       vuelta del login con Google
+components/            componentes de UI (único "use client": filtro-solicitudes)
 lib/
   auth.ts              quién hace el request (sesión, rol, centro)
+  formato.ts           fechas en hora argentina y etiquetas para pantalla
   errores.ts           responderError: 401 / 403 / 500
   http.ts              respuestas 400 / 404 / 409 / 502
   db/                  consultas Prisma (único lugar que importa Prisma)

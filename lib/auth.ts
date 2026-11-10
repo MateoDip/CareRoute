@@ -1,4 +1,5 @@
 import type { RolUsuario } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { registrarUsuarioSiNoExiste } from "@/lib/db/usuarios";
 import { crearClienteSupabase } from "@/lib/supabase-server";
 
@@ -114,4 +115,27 @@ export async function requerirUsuarioConCentro(
   const { centroSaludId } = usuario;
   if (!centroSaludId) throw new SinCentroAsignado();
   return { ...usuario, centroSaludId };
+}
+
+/**
+ * Para Server Components (clase 8): la MISMA autorización que los endpoints
+ * clínicos — `requerirUsuarioConCentro(ROLES_CLINICOS)` —, traducida a
+ * navegación en vez de a un status HTTP:
+ *
+ *  - sin sesión (la API respondería 401)             → /ingresar
+ *  - sin centro o sin rol clínico (la API, 403)       → /sin-acceso
+ *
+ * La pertenencia de cada solicitud no se resuelve acá sino en la consulta, con
+ * el centro que devuelve esta función (igual que en los handlers).
+ */
+export async function requerirMedicoEnPagina(): Promise<UsuarioConCentro> {
+  try {
+    return await requerirUsuarioConCentro(ROLES_CLINICOS);
+  } catch (error) {
+    if (error instanceof NoAutenticado) redirect("/ingresar");
+    if (error instanceof SinCentroAsignado || error instanceof NoAutorizado) {
+      redirect("/sin-acceso");
+    }
+    throw error;
+  }
 }
