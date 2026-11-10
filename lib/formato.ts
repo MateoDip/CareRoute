@@ -3,6 +3,7 @@ import type {
   EstadoTripulacion,
   EventoBitacora,
   NivelUrgencia,
+  RolUsuario,
 } from "@prisma/client";
 
 /**
@@ -32,6 +33,12 @@ export function formatearFechaHora(fecha: Date): string {
     hourCycle: "h23",
   });
 }
+
+export const ETIQUETA_ROL: Record<RolUsuario, string> = {
+  ADMIN: "Administrador",
+  MEDICO_DERIVANTE: "Médico derivante",
+  MEDICO_RECEPTOR: "Médico receptor",
+};
 
 export const ETIQUETA_ESTADO: Record<EstadoSolicitud, string> = {
   PENDIENTE: "Pendiente",

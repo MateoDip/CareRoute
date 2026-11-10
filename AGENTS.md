@@ -122,6 +122,23 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - Las props de un componente de cliente son serializables: las fechas viajan formateadas como
   texto con `formatearFechaHora` (`lib/formato.ts`), que fija la hora argentina.
 - Sin `console.log` en el código que se mergea.
+
+### 3.1 Sistema visual (clase 10)
+
+- Prohibido el CSS suelto: ni `.module.css` ni `style={...}` inline. Los colores, radios y
+  tipografía son tokens de `app/globals.css`; se usan como clases (`bg-primary`,
+  `text-muted-foreground`), nunca colores sueltos (`bg-blue-700`, `#fff`).
+- En `app/` no se escriben bordes ni radios a mano: se usan `Card`, `Button`, `Badge`, etc.
+- `components/ui/` son los componentes base de shadcn/ui, copiados al repo y propios. **No importan
+  nada del dominio.** La traducción del dominio (qué badge lleva cada estado) vive en
+  `components/estado-solicitud.tsx`.
+- Para un link con forma de botón: `<Link className={buttonVariants({ variant: "outline" })}>`.
+- Todo componente o variante nueva se agrega también a la galería `/sistema`.
+- Cada pantalla resuelve sus cinco estados: cargando (`loading.tsx`), con datos (`page.tsx`), vacío
+  (`SinDatos`, desde el servidor), sin resultados (el filtro, en el cliente) y error (`error.tsx`).
+  Vacío y sin resultados tienen textos distintos. No hay try/catch por página.
+- `error.tsx` no muestra el mensaje de la excepción: lo registra con `console.error`.
+- Si se cambia un color, se recalcula la tabla de contraste de `docs/spec.md` §7.
 - Antes de instalar una dependencia nueva, preguntá. No agregues librerías por conveniencia.
 - No reformatees archivos que no tocaste ni hagas refactors masivos no pedidos.
 
@@ -129,17 +146,29 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 
 ```
 app/
-  page.tsx                         listado de solicitudes del centro (Server Component)
-  solicitudes/[id]/page.tsx        ficha de la solicitud (Server Component)
-  ingresar/                        login: page.tsx + acciones.ts (Server Actions entrar / salir)
-  sin-acceso/page.tsx              cuenta sin centro o sin rol clínico
+  globals.css                      tokens del sistema visual
+  acciones-sesion.ts               Server Actions entrar / salir (las usan los dos grupos)
+  not-found.tsx                    404 de direcciones inexistentes
+  (app)/                           con sesión de médico con centro (el paréntesis no va en la URL)
+    layout.tsx                     barra de navegación; sin sesión → /ingresar
+    page.tsx, loading.tsx          listado de solicitudes (/, /?rol=destino)
+    error.tsx, not-found.tsx       error y 404 de las pantallas con sesión
+    solicitudes/[id]/              ficha de la solicitud (page + loading)
+    sistema/page.tsx               galería del sistema visual
+  (public)/                        sin sesión requerida; layout solo con encabezado
+    ingresar/page.tsx              login con Google
+    sin-acceso/page.tsx            cuenta sin centro o sin rol clínico
   api/<recurso>/route.ts           colección
   api/<recurso>/[id]/route.ts      individual
   api/<recurso>/[id]/<operación>/  operaciones del flujo (destino, aprobacion, rechazo…)
   auth/callback/route.ts           login con Google (público)
 components/
-  filtro-solicitudes.tsx           único componente con "use client"
+  ui/                              base de shadcn/ui: Button, Card, Badge, Input, NativeSelect,
+                                   Skeleton, Alert (no importan el dominio)
+  navegacion.tsx, sin-datos.tsx, estado-solicitud.tsx   componentes de dominio
+  filtro-solicitudes.tsx           único "use client" propio (además de error.tsx)
 lib/
+  utils.ts                         cn(): une clases de Tailwind
   auth.ts                          sesión, rol y centro (handlers y páginas)
   errores.ts                       responderError
   http.ts                          respuestas 400 / 403 de regla / 404 / 409 / 502

@@ -10,8 +10,11 @@ import { crearClienteSupabase } from "@/lib/supabase-server";
  * Antes el login era una página entera con "use client" solo para llamar a
  * Supabase desde el navegador. Desde el servidor es lo mismo: Supabase devuelve
  * la URL de Google, el code verifier (PKCE) queda en una cookie y
- * /auth/callback lo canjea por la sesión. Así el único componente de cliente
- * del proyecto es el filtro del listado.
+ * /auth/callback lo canjea por la sesión.
+ *
+ * Vive en app/ y no junto a una página porque la usan los dos grupos de rutas:
+ * (public)/ingresar para entrar, y la barra de (app) y (public)/sin-acceso
+ * para salir.
  */
 export async function entrarConGoogle() {
   const origen = (await headers()).get("origin");
