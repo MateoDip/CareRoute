@@ -128,7 +128,7 @@ sesión, nunca del body, de un header ni de la query.
 |---|---|
 | Framework | Next.js 16 (App Router) + React 19 |
 | Lenguaje | TypeScript 5.7 (`strict: true`, prohibido `any`) |
-| Estilos | Tailwind CSS 4 |
+| Estilos | Tailwind CSS 4 + componentes de shadcn/ui (copiados en `components/ui/`) |
 | Validación | Zod 3 |
 | ORM | Prisma 6 (`prisma.config.ts` en la raíz) |
 | Base de datos | PostgreSQL en Supabase (São Paulo · `sa-east-1`), con RLS activado |
@@ -142,13 +142,14 @@ sesión, nunca del body, de un header ni de la query.
 
 ```
 app/
-  page.tsx             listado de solicitudes del centro
-  solicitudes/[id]/    ficha de la solicitud
-  ingresar/            login con Google (Server Actions)
-  sin-acceso/          cuenta sin centro o sin rol clínico
+  globals.css          tokens del sistema visual (colores, radios)
+  (app)/               pantallas con sesión: listado (/), ficha (/solicitudes/:id), galería (/sistema)
+  (public)/            pantallas sin sesión: /ingresar, /sin-acceso
   api/                 route handlers (JSON)
   auth/callback/       vuelta del login con Google
-components/            componentes de UI (único "use client": filtro-solicitudes)
+components/
+  ui/                  base de shadcn/ui (Button, Card, Badge, Input, Skeleton, Alert…)
+  *.tsx                componentes de dominio (barra, estado vacío, badges de estado, filtro)
 lib/
   auth.ts              quién hace el request (sesión, rol, centro)
   formato.ts           fechas en hora argentina y etiquetas para pantalla

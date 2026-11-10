@@ -1,5 +1,6 @@
 import type { RolUsuario } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { registrarUsuarioSiNoExiste } from "@/lib/db/usuarios";
 import { crearClienteSupabase } from "@/lib/supabase-server";
 
@@ -127,10 +128,17 @@ export async function requerirUsuarioConCentro(
  *
  * La pertenencia de cada solicitud no se resuelve acá sino en la consulta, con
  * el centro que devuelve esta función (igual que en los handlers).
+ *
+ * El layout de (app) y la página la llaman los dos en el mismo request (clase
+ * 10): `cache` hace que Supabase y la base se consulten una sola vez.
  */
+const usuarioClinicoDelRequest = cache(() =>
+  requerirUsuarioConCentro(ROLES_CLINICOS),
+);
+
 export async function requerirMedicoEnPagina(): Promise<UsuarioConCentro> {
   try {
-    return await requerirUsuarioConCentro(ROLES_CLINICOS);
+    return await usuarioClinicoDelRequest();
   } catch (error) {
     if (error instanceof NoAutenticado) redirect("/ingresar");
     if (error instanceof SinCentroAsignado || error instanceof NoAutorizado) {

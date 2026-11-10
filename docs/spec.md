@@ -123,6 +123,27 @@ El recorrido que da valor al sistema (no un ABM):
 
 Antes de `EN_CURSO`, cualquiera de los dos médicos puede rechazar la derivación, con la restricción de la regla 3 de la sección 6.
 
+### Mapa de pantallas (clase 10)
+
+Cada paso del flujo con la pantalla que lo resuelve. "Médico con centro" es un médico derivante o
+receptor con centro asignado; la pertenencia (origen o destino) la decide la consulta, no la pantalla.
+
+| Paso | Pantalla | Dirección | Quién puede abrirla |
+|---|---|---|---|
+| — | Ingresar con Google | `/ingresar` | Cualquiera (pública) |
+| — | Cuenta sin centro o sin rol clínico (regla 4) | `/sin-acceso` | Con sesión, sin poder operar |
+| 1. Crear la solicitud (HU01) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante |
+| 2. Signos vitales y sugerencia de IA (HU02) | ⚠️ **Sin pantalla** (clase 12). El resultado se ve en la ficha | — | Médico derivante del origen |
+| 3. Ranking de centros (HU03) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante del origen |
+| 4. Elegir el destino (HU04) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante del origen |
+| 5a. Ver las entrantes (HU06) | Listado filtrado por entrantes | `/?rol=destino` | Médico con centro |
+| 5b. Aprobar o rechazar (HU04) | ⚠️ **Sin pantalla** (clase 12) | — | Médico receptor del destino |
+| 6. Seguir el traslado (HU07) | Ficha: triaje, tripulación y bitácora | `/solicitudes/:id` | Médico con centro, si su centro es origen o destino |
+| — | Listado de solicitudes del centro, con filtro por estado | `/` | Médico con centro |
+| — | Galería del sistema visual | `/sistema` | Médico con centro |
+
+Fuera del flujo principal: actualizar la disponibilidad de camas (HU05) tampoco tiene pantalla todavía.
+
 ## 6. Reglas de negocio
 
 Las restricciones que **no** son obvias y que la IA no puede adivinar. Estas son las que hay que revisar a mano.
@@ -150,15 +171,47 @@ ejemplos por los de su dominio: lo que importa es que se pueda verificar, no que
 - **Recuerdo:** El botón para ver las derivaciones entrantes está a un clic desde la home y siempre en la misma posición de la cabecera.
 - **Satisfacción:** Se probará el flujo completo con un profesional de la salud ajeno al equipo antes del Demo Day.
 
+**Auditoría de la clase 10:**
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| Eficiencia | ⏳ Pendiente | Todavía no hay formulario para iniciar una solicitud (clase 12). Se mide cuando exista |
+| Errores | ⏳ Pendiente | Depende del formulario de triaje (clase 12). `components/ui/input.tsx` ya marca `aria-invalid` |
+| Aprendizaje | ⏳ Pendiente | Se prueba con alguien ajeno cuando el formulario exista |
+| Recuerdo | ✅ Cumple | "Entrantes" está en la barra (`components/navegacion.tsx`), a un clic desde cualquier pantalla con sesión, siempre en el mismo lugar |
+| Satisfacción | ⏳ Pendiente | Prueba con un profesional de la salud antes del Demo Day |
+
 ### Accesibilidad
 
 Esta lista es **igual para todos los proyectos**: no hay que adaptarla, hay que cumplirla.
 
-- [ ] Todo se puede operar **con el teclado**, y se ve dónde está el foco.
-- [ ] Los campos de formulario tienen `label` asociado, no solo *placeholder*.
-- [ ] Las imágenes que informan tienen texto alternativo; las decorativas, alternativo vacío.
-- [ ] El **contraste** entre texto y fondo llega a **4,5:1** (3:1 si la letra es grande).
-- [ ] El error nunca se comunica **solo con color**: siempre hay texto.
+- [x] Todo se puede operar **con el teclado**, y se ve dónde está el foco. Todos los controles son
+  nativos (`<a>`, `<button>`, `<select>`); el foco es un anillo sólido de 2 px (`components/ui/`) o
+  un contorno del color `--ring` (`app/globals.css`). Recorrido con Tab verificado en `/sistema`.
+- [x] Los campos de formulario tienen `label` asociado, no solo *placeholder* (`htmlFor` + `useId`
+  en el filtro; ver `/sistema`).
+- [x] Las imágenes que informan tienen texto alternativo; las decorativas, alternativo vacío. No hay
+  imágenes; el esqueleto de carga es `aria-hidden` y la pantalla anuncia "Cargando…" con `role="status"`.
+- [x] El **contraste** entre texto y fondo llega a **4,5:1** (3:1 si la letra es grande). Ver la tabla.
+- [x] El error nunca se comunica **solo con color**: siempre hay texto. Las alertas tienen título y
+  descripción, los campos con error un mensaje debajo, y cada badge dice su estado.
+
+**Contraste de los tokens** (`app/globals.css`, calculado con la fórmula de WCAG 2.1). Si se cambia
+un color, se recalcula esta tabla.
+
+| Par (texto / fondo) | Claro | Oscuro |
+|---|---|---|
+| `foreground` / `background` | 19,8:1 | 19,0:1 |
+| `muted-foreground` / `background` | 7,7:1 | 7,7:1 |
+| `muted-foreground` / `card` | 7,7:1 | 6,9:1 |
+| `muted-foreground` / `muted` (hover) | 7,0:1 | 5,8:1 |
+| `primary-foreground` / `primary` (botón) | 6,7:1 | 7,8:1 |
+| `primary` / `background` (enlace) | 6,7:1 | 7,8:1 |
+| `secondary-foreground` / `secondary` | 16,1:1 | 14,3:1 |
+| `destructive` / `card` (texto de error) | 6,5:1 | 6,4:1 |
+| `destructive-foreground` / `destructive` | 6,5:1 | 7,2:1 |
+| `ring` / `background` (foco, mínimo 3:1) | 6,7:1 | 7,8:1 |
+| `input` / `card` (borde de campo, mínimo 3:1) | 4,8:1 | 3,7:1 |
 
 ## 8. Integración externa
 

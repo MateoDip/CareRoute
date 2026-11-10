@@ -3,13 +3,22 @@
 import type { EstadoSolicitud } from "@prisma/client";
 import Link from "next/link";
 import { useId, useState } from "react";
+import { BadgeEstado } from "@/components/estado-solicitud";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { NativeSelect } from "@/components/ui/native-select";
 
 /** Una fila lista para mostrar. Todo serializable: la fecha llega formateada. */
 export type SolicitudEnLista = {
   id: string;
   pacienteDni: string;
   estado: EstadoSolicitud;
-  estadoEtiqueta: string;
   /** "Entrante · desde Hospital X", "Saliente · sin destino todavía"… */
   sentido: string;
   fecha: string;
@@ -23,11 +32,16 @@ type Props = {
 const TODOS = "TODOS";
 
 /**
- * Único componente de cliente del proyecto (clase 8).
+ * Único componente de cliente propio (clase 8; el otro "use client" es
+ * error.tsx, que Next exige de cliente).
  *
  * Por qué es de cliente: el filtro guarda en el navegador qué estado eligió el
  * médico y filtra sin volver al servidor. Los datos ya llegan cargados y
  * autorizados desde la página: acá no hay fetch ni useEffect.
+ *
+ * Resuelve el estado "sin resultados" (clase 10): hay solicitudes, pero ninguna
+ * en el estado elegido. Lo sabe solo el cliente. El "vacío" (el centro no tiene
+ * ninguna) lo resuelve la página antes de renderizar este componente.
  */
 export function FiltroSolicitudes({ solicitudes, estados }: Props) {
   const idFiltro = useId();
@@ -37,15 +51,15 @@ export function FiltroSolicitudes({ solicitudes, estados }: Props) {
     estado === TODOS
       ? solicitudes
       : solicitudes.filter((solicitud) => solicitud.estado === estado);
-  const etiquetaElegida = estados.find((e) => e.valor === estado)?.etiqueta;
+  const etiquetaElegida = estados.find((e) => e.valor === estado)?.etiqueta ?? "";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-        <label htmlFor={idFiltro} className="font-medium">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+        <label htmlFor={idFiltro} className="text-sm font-medium">
           Estado
         </label>
-        <select
+        <NativeSelect
           id={idFiltro}
           value={estado}
           onChange={(evento) =>
@@ -53,7 +67,7 @@ export function FiltroSolicitudes({ solicitudes, estados }: Props) {
               estados.find((e) => e.valor === evento.target.value)?.valor ?? TODOS,
             )
           }
-          className="rounded border border-foreground/30 bg-background px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+          className="sm:w-56"
         >
           <option value={TODOS}>Todos</option>
           {estados.map((opcion) => (
@@ -61,36 +75,45 @@ export function FiltroSolicitudes({ solicitudes, estados }: Props) {
               {opcion.etiqueta}
             </option>
           ))}
-        </select>
-        <p aria-live="polite" className="text-sm text-foreground/70">
-          {visibles.length === 1
-            ? "1 solicitud"
-            : `${visibles.length} solicitudes`}
+        </NativeSelect>
+        <p aria-live="polite" className="text-sm text-muted-foreground">
+          {visibles.length === 1 ? "1 solicitud" : `${visibles.length} solicitudes`}
         </p>
       </div>
 
       {visibles.length === 0 ? (
-        <p className="rounded border border-foreground/15 p-4">
-          No hay solicitudes en estado «{etiquetaElegida}». Elegí otro estado o
-          «Todos».
-        </p>
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-lg">
+              Ninguna solicitud está en estado «{etiquetaElegida}»
+            </CardTitle>
+            <CardDescription>
+              Hay {solicitudes.length === 1 ? "1 solicitud" : `${solicitudes.length} solicitudes`}{" "}
+              en otros estados.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => setEstado(TODOS)}>
+              Mostrar todas
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <ul className="divide-y divide-foreground/15 rounded border border-foreground/15">
+        <ul className="flex flex-col gap-3">
           {visibles.map((solicitud) => (
             <li key={solicitud.id}>
-              <Link
-                href={`/solicitudes/${solicitud.id}`}
-                className="flex flex-col gap-1 p-4 hover:bg-foreground/5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-              >
-                <span className="flex flex-col">
-                  <span className="font-medium">DNI {solicitud.pacienteDni}</span>
-                  <span className="text-sm text-foreground/70">
-                    {solicitud.sentido} · {solicitud.fecha}
-                  </span>
-                </span>
-                <span className="self-start rounded-full border border-foreground/30 px-3 py-0.5 text-sm sm:self-auto">
-                  {solicitud.estadoEtiqueta}
-                </span>
+              <Link href={`/solicitudes/${solicitud.id}`} className="block rounded-xl">
+                <Card className="gap-0 py-4 transition-colors hover:bg-accent">
+                  <CardContent className="flex flex-col gap-2 px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
+                      <p className="font-medium">DNI {solicitud.pacienteDni}</p>
+                      <p className="break-words text-sm text-muted-foreground">
+                        {solicitud.sentido} · {solicitud.fecha}
+                      </p>
+                    </div>
+                    <BadgeEstado estado={solicitud.estado} />
+                  </CardContent>
+                </Card>
               </Link>
             </li>
           ))}
