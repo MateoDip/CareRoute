@@ -123,26 +123,28 @@ El recorrido que da valor al sistema (no un ABM):
 
 Antes de `EN_CURSO`, cualquiera de los dos médicos puede rechazar la derivación, con la restricción de la regla 3 de la sección 6.
 
-### Mapa de pantallas (clase 10)
+### Mapa de pantallas (clases 10 y 12)
 
 Cada paso del flujo con la pantalla que lo resuelve. "Médico con centro" es un médico derivante o
 receptor con centro asignado; la pertenencia (origen o destino) la decide la consulta, no la pantalla.
+Una pantalla de otro rol responde 404, como una solicitud de otro centro.
 
 | Paso | Pantalla | Dirección | Quién puede abrirla |
 |---|---|---|---|
 | — | Ingresar con Google | `/ingresar` | Cualquiera (pública) |
 | — | Cuenta sin centro o sin rol clínico (regla 4) | `/sin-acceso` | Con sesión, sin poder operar |
-| 1. Crear la solicitud (HU01) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante |
-| 2. Signos vitales y sugerencia de IA (HU02) | ⚠️ **Sin pantalla** (clase 12). El resultado se ve en la ficha | — | Médico derivante del origen |
-| 3. Ranking de centros (HU03) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante del origen |
-| 4. Elegir el destino (HU04) | ⚠️ **Sin pantalla** (clase 12) | — | Médico derivante del origen |
+| 1. Crear la solicitud (HU01) | Formulario con el DNI | `/solicitudes/nueva` | Médico derivante |
+| 2. Signos vitales y sugerencia de IA (HU02) | Formulario de triaje; si la IA no responde, el médico elige el nivel | `/solicitudes/:id/triaje` | Médico derivante del origen, con la solicitud `PENDIENTE` |
+| 3. Ranking de centros (HU03) | Lista de centros con cama del tipo requerido, por puntaje | `/solicitudes/:id/destino` | Médico derivante del origen, con la solicitud `EVALUANDO` |
+| 4. Elegir el destino (HU04) | La misma pantalla: elige una opción y confirma | `/solicitudes/:id/destino` | Ídem |
 | 5a. Ver las entrantes (HU06) | Listado filtrado por entrantes | `/?rol=destino` | Médico con centro |
-| 5b. Aprobar o rechazar (HU04) | ⚠️ **Sin pantalla** (clase 12) | — | Médico receptor del destino |
+| 5b. Aprobar o rechazar (HU04) | Botones en la tarjeta "Qué sigue" de la ficha; rechazar pide confirmación | `/solicitudes/:id` | Receptor del destino; el derivante del origen puede rechazar antes de `APROBADA` |
 | 6. Seguir el traslado (HU07) | Ficha: triaje, tripulación y bitácora | `/solicitudes/:id` | Médico con centro, si su centro es origen o destino |
 | — | Listado de solicitudes del centro, con filtro por estado | `/` | Médico con centro |
 | — | Galería del sistema visual | `/sistema` | Médico con centro |
 
-Fuera del flujo principal: actualizar la disponibilidad de camas (HU05) tampoco tiene pantalla todavía.
+Sin pantalla todavía: asignar tripulación y registrar la bitácora del traslado (paso 6, solo
+lectura por ahora) y actualizar la disponibilidad de camas (HU05), que están en la API.
 
 ## 6. Reglas de negocio
 
@@ -171,12 +173,12 @@ ejemplos por los de su dominio: lo que importa es que se pueda verificar, no que
 - **Recuerdo:** El botón para ver las derivaciones entrantes está a un clic desde la home y siempre en la misma posición de la cabecera.
 - **Satisfacción:** Se probará el flujo completo con un profesional de la salud ajeno al equipo antes del Demo Day.
 
-**Auditoría de la clase 10:**
+**Auditoría (clases 10 y 12):**
 
 | Criterio | Estado | Evidencia |
 |---|---|---|
-| Eficiencia | ⏳ Pendiente | Todavía no hay formulario para iniciar una solicitud (clase 12). Se mide cuando exista |
-| Errores | ⏳ Pendiente | Depende del formulario de triaje (clase 12). `components/ui/input.tsx` ya marca `aria-invalid` |
+| Eficiencia | ✅ Cumple (clase 12) | Desde cualquier pantalla: "Nueva solicitud" en la barra (1), DNI, "Crear solicitud" (2). Dos interacciones |
+| Errores | ✅ Cumple (clase 12) | El campo con error se marca (`aria-invalid` y borde) y el mensaje se escribe debajo; el formulario conserva lo cargado (`components/campo.tsx`, `lib/formularios.ts`) |
 | Aprendizaje | ⏳ Pendiente | Se prueba con alguien ajeno cuando el formulario exista |
 | Recuerdo | ✅ Cumple | "Entrantes" está en la barra (`components/navegacion.tsx`), a un clic desde cualquier pantalla con sesión, siempre en el mismo lugar |
 | Satisfacción | ⏳ Pendiente | Prueba con un profesional de la salud antes del Demo Day |

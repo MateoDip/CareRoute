@@ -98,12 +98,37 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - Nunca `rol`, `usuarioId` ni `centroSaludId` del body, headers o query (la única excepción
   es `PATCH /api/usuarios/:id`, donde un ADMIN asigna rol y centro a otro usuario).
 - El `catch` de cada handler es `return responderError("VERBO /ruta", error)`.
-- Orden: sesión (401) → rol / centro (403) → pertenencia (404) → body (400) → regla (409)
-  → servicio externo (502) → escribir.
-- En las páginas, la primera línea es `requerirMedicoEnPagina()`: la misma autorización que los
-  handlers, traducida a navegación (sin sesión → `/ingresar`; sin centro o rol → `/sin-acceso`).
-  La pertenencia va en la consulta de `lib/db/` y, si devuelve null, `notFound()`: "no existe" y
-  "no es de tu centro" se ven igual.
+- Orden: sesión (401) → rol / centro (403) → body (400) → caso de uso de `lib/casos/`:
+  pertenencia (404) → regla (409, o 403 de regla) → servicio externo (502) → escribir.
+- En las páginas y Server Actions, la primera línea es `requerirMedicoEnPagina(rol?)`: la misma
+  autorización que los handlers, traducida a navegación (sin sesión → `/ingresar`; sin centro o
+  sin rol clínico → `/sin-acceso`; otro rol que el pedido → 404). La pertenencia va en la consulta
+  de `lib/db/` y, si devuelve null, `notFound()`: "no existe" y "no es de tu centro" se ven igual.
+
+### 2.5.1 Casos de uso (clase 12)
+
+- Toda operación que escribe tiene su caso en `lib/casos/<verbo>-<cosa>.ts`. Sin HTTP ni
+  formularios: recibe el usuario de la sesión y datos ya validados, y devuelve un `Resultado`.
+- Las reglas se escriben **una sola vez**, en el caso. El Route Handler y la Server Action lo
+  llaman; ninguno de los dos repite un `if` de regla.
+- Un caso no lanza por una regla: devuelve `rechazo(motivo, mensaje, datos)` con un motivo de
+  `MotivoDeRechazo`. Un motivo nuevo obliga a sumarlo en `STATUS_POR_MOTIVO` (`lib/http.ts`).
+
+### 2.5.2 Server Actions y formularios (clase 12)
+
+- La acción vive en `acciones.ts` ("use server") junto a su `page.tsx`; el formulario en
+  `formulario.tsx` ("use client").
+- Primera línea: `requerirMedicoEnPagina("ROL")`. Después, el schema de Zod existente con
+  `mensajesEnCastellano` y el caso de uso.
+- El id de la URL llega con `.bind(null, id)`: nunca en un `<input type="hidden">`. Los ids de
+  la sesión (usuario, centro) nunca viajan en el formulario.
+- Al terminar bien: `revalidatePath` de la ficha y de `/`, y `redirect` a la ficha como última
+  línea. Al fallar: `estadoDeValidacion` (debajo de cada campo) o `estadoDeRechazo` (arriba).
+- El formulario usa `useActionState(accion, SIN_ENVIAR)`, sin `useState` por campo ni `fetch`;
+  cada campo va en `<Campo>` y muestra `defaultValue={estado.valores?.campo}` para no vaciarse.
+- El botón se deshabilita mientras `pendiente` y cambia el texto ("Guardando…").
+- Mobile-first: botones apilados y a lo ancho; `sm:` en fila. `<select>` nativo; `inputMode` para
+  números, no `type="number"` para valores que no son cantidades (DNI).
 
 ### 2.6 Servicios externos
 
@@ -153,7 +178,10 @@ app/
     layout.tsx                     barra de navegación; sin sesión → /ingresar
     page.tsx, loading.tsx          listado de solicitudes (/, /?rol=destino)
     error.tsx, not-found.tsx       error y 404 de las pantallas con sesión
-    solicitudes/[id]/              ficha de la solicitud (page + loading)
+    solicitudes/nueva/             iniciar una solicitud: page + acciones + formulario (HU01)
+    solicitudes/[id]/              ficha (page + loading) + acciones aprobar / rechazar
+    solicitudes/[id]/triaje/       triaje con la IA o nivel a mano (HU02)
+    solicitudes/[id]/destino/      ranking y elección del destino (HU03, HU04)
     sistema/page.tsx               galería del sistema visual
   (public)/                        sin sesión requerida; layout solo con encabezado
     ingresar/page.tsx              login con Google
@@ -166,10 +194,16 @@ components/
   ui/                              base de shadcn/ui: Button, Card, Badge, Input, NativeSelect,
                                    Skeleton, Alert (no importan el dominio)
   navegacion.tsx, sin-datos.tsx, estado-solicitud.tsx   componentes de dominio
-  filtro-solicitudes.tsx           único "use client" propio (además de error.tsx)
+  campo.tsx                        etiqueta + control + ayuda + error conectados (useId)
+  formulario.tsx                   error arriba del formulario y botones Guardar / Cancelar
+  boton-accion.tsx                 operación sin campos (aprobar, rechazar), con confirmación
+  filtro-solicitudes.tsx           filtro del listado (de cliente)
 lib/
   utils.ts                         cn(): une clases de Tailwind
-  auth.ts                          sesión, rol y centro (handlers y páginas)
+  auth.ts                          sesión, rol y centro (handlers, páginas y acciones)
+  casos/                           casos de uso: reglas una sola vez, para API y pantallas
+  formularios.ts                   EstadoFormulario, SIN_ENVIAR y ayudas para FormData
+  proximo-paso.ts                  qué botones ve cada médico en la ficha (+ .test.ts)
   errores.ts                       responderError
   http.ts                          respuestas 400 / 403 de regla / 404 / 409 / 502
   db/                              consultas Prisma

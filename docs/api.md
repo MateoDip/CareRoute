@@ -75,14 +75,23 @@ hasta que un admin se lo asigne con `PATCH /api/usuarios/:id`.
 
 1. ¿Hay sesión? → no: **401** (`requerirUsuario` lanza `NoAutenticado`)
 2. ¿El rol alcanza? ¿Tiene centro? → no: **403** (`NoAutorizado`, `SinCentroAsignado`)
-3. ¿El dato es suyo? → no: **404** (el `where` de `lib/db/` lleva el centro de la sesión)
-4. ¿El body está bien? → no: **400** (Zod)
-5. ¿La regla de negocio lo deja? → no: **409** (función pura de `lib/`)
-6. ¿El servicio externo respondió? → no: **502** (solo `/evaluacion`, clase 7)
-7. Recién ahí se escribe, con `lib/db/`.
+3. ¿El body está bien? → no: **400** (Zod)
+4. El caso de uso de `lib/casos/` (clase 12), que también usan las pantallas:
+   1. ¿El dato es suyo? → no: **404** (el `where` de `lib/db/` lleva el centro de la sesión)
+   2. ¿La regla de negocio lo deja? → no: **409** (o **403** si la regla le niega la acción a su rol)
+   3. ¿El servicio externo respondió? → no: **502** (solo `/evaluacion`, clase 7)
+   4. Recién ahí se escribe, con `lib/db/`.
 
 Las excepciones de 1 y 2 las traduce `responderError` (`lib/errores.ts`) en el único
-`catch` del handler; todo lo demás se devuelve como valor y se traduce con un `if`.
+`catch` del handler. El caso de uso no lanza: devuelve un motivo de un conjunto cerrado
+(`MotivoDeRechazo`, `lib/casos/resultado.ts`) y el handler lo traduce con
+`responderRechazo` y la tabla `STATUS_POR_MOTIVO` (`lib/http.ts`).
+
+Hasta la clase 12, la pertenencia (404) se miraba antes que el body (400). Al mover las
+reglas a `lib/casos/`, el body se valida antes: con un body inválido la API responde 400
+aunque el id no sea del usuario. No filtra información (un 400 no confirma que el id
+exista) y el caso de uso recibe datos ya validados, igual desde la API que desde un
+formulario.
 
 ### Por qué `404` y no `403` cuando el recurso es de otro centro
 
@@ -246,7 +255,8 @@ al cliente a adivinar.
 |---|---|
 | `lib/auth.ts` | Quién hace el request (`obtenerUsuario`, `requerirUsuario`, `requerirUsuarioConCentro`) y las excepciones `NoAutenticado`, `NoAutorizado`, `SinCentroAsignado` |
 | `lib/errores.ts` | `responderError`: traduce esas excepciones a 401/403 y todo lo demás a 500 |
-| `lib/http.ts` | Las respuestas 400, 403 de regla, 404, 409 y 502 con forma uniforme |
+| `lib/http.ts` | Las respuestas 400, 404 y 409 con forma uniforme, y `STATUS_POR_MOTIVO`: qué status lleva cada motivo de rechazo de un caso de uso |
+| `lib/casos/*.ts` | Los casos de uso del flujo (iniciar, triaje, ranking, destino, aprobar, rechazar): pertenencia, reglas y escritura, una sola vez. Los llaman el Route Handler y la Server Action |
 | `lib/db/*.ts` | Las consultas. La pertenencia va en el `where`; ninguna otra carpeta importa Prisma |
 | `lib/disponibilidad.ts` | Si hay cama del tipo requerido y qué alternativas quedan |
 | `lib/reglas-solicitud.ts` | Transiciones de estado, qué impide elegir destino o aprobar, quién rechaza y desde qué lado, si el rechazo devuelve cama |

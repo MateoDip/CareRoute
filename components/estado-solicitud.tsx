@@ -31,5 +31,6 @@ export function BadgeEstado({ estado }: { estado: EstadoSolicitud }) {
 }
 
 export function BadgeNivel({ nivel }: { nivel: NivelUrgencia }) {
-  return <Badge variant={VARIANTE_NIVEL[nivel]}>Urgencia {ETIQUETA_NIVEL[nivel].toLowerCase()}</Badge>;
+  // "Nivel crítico" y no "Urgencia crítico": las etiquetas son masculinas (el nivel).
+  return <Badge variant={VARIANTE_NIVEL[nivel]}>Nivel {ETIQUETA_NIVEL[nivel].toLowerCase()}</Badge>;
 }

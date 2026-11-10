@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   FiltroSolicitudes,
   type SolicitudEnLista,
@@ -53,6 +56,8 @@ export default async function Inicio({ searchParams }: Props) {
     .safeParse({ rol: (await searchParams).rol });
   const rol = filtro.success ? filtro.data.rol : undefined;
   const textos = TEXTOS[rol ?? "todas"];
+  // Solo el derivante inicia derivaciones (HU01); la API se lo niega al resto.
+  const puedeIniciar = usuario.rol === "MEDICO_DERIVANTE";
 
   const solicitudes = await listarSolicitudesDelCentro({
     centroSaludId: usuario.centroSaludId,
@@ -82,13 +87,26 @@ export default async function Inicio({ searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">{textos.titulo}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold">{textos.titulo}</h1>
+        {puedeIniciar && (
+          <Link href="/solicitudes/nueva" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>
+            Nueva solicitud
+          </Link>
+        )}
+      </div>
 
       {filas.length === 0 ? (
         <SinDatos
           titulo={textos.vacioTitulo}
           descripcion={textos.vacioDescripcion}
-          accion={rol ? { href: "/", texto: "Ver todas las solicitudes" } : undefined}
+          accion={
+            rol
+              ? { href: "/", texto: "Ver todas las solicitudes" }
+              : puedeIniciar
+                ? { href: "/solicitudes/nueva", texto: "Iniciar la primera solicitud" }
+                : undefined
+          }
         />
       ) : (
         <FiltroSolicitudes solicitudes={filas} estados={estados} />
