@@ -61,6 +61,15 @@ export async function obtenerCentro(id: string) {
   });
 }
 
+/** Solo el nombre, para el encabezado de las pantallas. null si no existe. */
+export async function nombreDelCentro(id: string): Promise<string | null> {
+  const centro = await prisma.centroSalud.findUnique({
+    where: { id },
+    select: { nombre: true },
+  });
+  return centro?.nombre ?? null;
+}
+
 export async function existeCentro(id: string): Promise<boolean> {
   const centro = await prisma.centroSalud.findUnique({
     where: { id },

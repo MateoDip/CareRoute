@@ -5,14 +5,16 @@ import { cn } from "@/lib/utils";
  * Componente de shadcn/ui (new-york). Cambio respecto del original: CardTitle
  * acepta `as` para ser un encabezado real (h1–h3) y no solo un div, así la
  * pantalla mantiene la jerarquía de títulos que usa un lector de pantalla.
- * También usa `leading-snug` en vez de `leading-none` para títulos largos.
+ * También usa `leading-snug` en vez de `leading-none` para títulos largos, y
+ * no lleva sombra: la tarjeta se separa del fondo por el color y el borde, y la
+ * sombra queda para lo que de verdad flota.
  */
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm",
+        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground",
         className,
       )}
       {...props}

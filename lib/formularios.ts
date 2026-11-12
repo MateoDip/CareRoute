@@ -8,10 +8,13 @@ import type { Rechazo } from "@/lib/casos/resultado";
  * siempre un problema, con su lugar en la pantalla:
  *  - `errores`: validación (lo que en la API es 400), debajo de cada campo.
  *  - `error`: regla de negocio o servicio caído (409 / 502), arriba del formulario.
+ *  - `enlace`: opcional, a dónde ir para resolver ese error.
  *  - `valores`: lo que la persona escribió, para que el formulario no se vacíe.
  */
 export type EstadoFormulario = {
   error?: string;
+  /** Una salida para el error de arriba: "Ver la derivación abierta". */
+  enlace?: { href: string; texto: string };
   errores?: Partial<Record<string, string[]>>;
   valores?: Record<string, string>;
 };

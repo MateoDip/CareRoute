@@ -10,7 +10,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "db:seed": "prisma db seed",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:e2e": "playwright test",
+    "contraste": "tsx scripts/contraste.ts",
+    "demo:carrera": "tsx scripts/demo-carrera.ts",
+    "db:carga": "tsx scripts/carga.ts",
+    "demo:indices": "tsx scripts/demo-indices.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -26,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",

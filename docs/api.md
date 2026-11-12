@@ -16,7 +16,7 @@ endpoint público es `GET /auth/callback`, que es el que crea la sesión.
 | Método | Ruta | Descripción | HU | Rol | Errores |
 |---|---|---|---|---|---|
 | GET | `/api/solicitudes` | Solicitudes del centro del usuario. Filtros: `?rol=origen\|destino`, `?estado=` | HU06, HU07 | Médico (derivante o receptor) con centro | 400 filtro · 401 · 403 |
-| POST | `/api/solicitudes` | Registra una solicitud. El centro de origen sale de la sesión | HU01 | MEDICO_DERIVANTE | 400 · 401 · 403 |
+| POST | `/api/solicitudes` | Registra una solicitud. El centro de origen sale de la sesión | HU01 | MEDICO_DERIVANTE | 400 · 401 · 403 · 409 derivación abierta |
 | GET | `/api/solicitudes/:id` | Ficha con triaje y tripulaciones asignadas | HU07 | Médico del centro de origen o destino | 401 · 403 · 404 |
 | PATCH | `/api/solicitudes/:id` | Corrige el DNI, solo mientras esté `PENDIENTE` | HU01 | MEDICO_DERIVANTE del origen | 400 · 401 · 403 · 404 · 409 |
 | POST | `/api/solicitudes/:id/evaluacion` | Registra el triaje. Sin `nivelUrgenciaSugerido` lo sugiere la IA (OpenAI); con él, es ingreso manual | HU02 | MEDICO_DERIVANTE del origen | 400 · 401 · 403 · 404 · 409 · 502 |
@@ -199,7 +199,9 @@ indica quién agarra el error. Cada fila tiene su request en `docs/api.http`.
 | Operación | Situación | Status | Capa | Mensaje y dato |
 |---|---|---|---|---|
 | `POST /api/solicitudes` | Falta el DNI o tiene formato inválido (HU01) | 400 | Zod | "Datos inválidos" + `detalles` |
+| `POST /api/solicitudes` | El paciente ya tiene una derivación abierta desde ese centro, o llegan varios pedidos a la vez (spec §6, regla 6) | 409 | base | "El paciente ya tiene una derivación abierta desde tu centro" + `solicitudAbiertaId` |
 | `PATCH /api/solicitudes/:id` | La solicitud ya no está `PENDIENTE` | 409 | regla | "Solo se pueden corregir solicitudes pendientes" + `estadoActual` |
+| `PATCH /api/solicitudes/:id` | El DNI nuevo es de un paciente con otra derivación abierta en el centro (regla 6) | 409 | base | "El paciente ya tiene una derivación abierta desde tu centro" |
 | `POST /api/solicitudes/:id/evaluacion` | Falta un signo vital obligatorio (HU01) | 400 | Zod | "Datos inválidos" + `detalles` |
 | `POST /api/solicitudes/:id/evaluacion` | Presión o frecuencia fuera de rango fisiológico | 400 | Zod | "Datos inválidos" + `detalles` |
 | `POST /api/solicitudes/:id/evaluacion` | La solicitud ya tiene evaluación (relación 1 a 1) | 409 | regla | "La solicitud ya fue evaluada" + `estadoActual` |
@@ -293,3 +295,10 @@ Las carreras también son errores esperados. Las escrituras que dependen del est
 `updateMany` con el estado esperado en el `where`: si otro usuario cambió la solicitud en
 el medio, no se toca nada y se responde 409. La aprobación hace el cambio de estado y el
 descuento de cama en una transacción: si la cama se ocupó en el medio, se deshace todo.
+
+Las reglas de "uno solo" las cumple la base (clase 14). La regla 6 (una derivación abierta
+por paciente y centro) es el índice único `(centroOrigenId, pacienteDniActivo)`: no se
+pregunta antes de guardar, se intenta guardar y, si la base lo rechaza (P2002 de Prisma),
+`lib/db/solicitudes.ts` lo devuelve como resultado esperado y la API responde 409, nunca
+500. La prueba es `e2e/concurrencia.spec.ts`: diez pedidos simultáneos, uno aceptado y nueve
+409, una sola fila en la base (ADR 0010).

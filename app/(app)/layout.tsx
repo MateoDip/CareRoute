@@ -16,7 +16,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
   return (
     <>
       <Navegacion nombre={usuario.nombre} rol={usuario.rol} />
-      <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">{children}</main>
+      <main className="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-6 sm:pt-8">{children}</main>
     </>
   );
 }

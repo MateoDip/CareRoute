@@ -19,7 +19,7 @@ export function FormularioNuevaSolicitud() {
 
   return (
     <form action={enviar} noValidate className="flex flex-col gap-6">
-      <ErrorDelFormulario mensaje={estado.error} />
+      <ErrorDelFormulario mensaje={estado.error} enlace={estado.enlace} />
 
       <Campo
         etiqueta="DNI del paciente"

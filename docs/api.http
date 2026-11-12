@@ -102,6 +102,15 @@ Cookie: {{sesionDerivante}}
 
 { "pacienteDni": "99700002", "estado": "APROBADA", "centroOrigenId": "centro-destino-1" }
 
+### Regla 6: el paciente ya tiene una derivación abierta desde el HECA → 409
+### + solicitudAbiertaId (99000001 es la solicitud EVALUANDO del seed). Lo mismo
+### pasa si se corre dos veces el "Éxito" de arriba sin volver a correr el seed.
+POST {{base}}/api/solicitudes
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "pacienteDni": "99000001" }
+
 ### DNI inválido → 400
 POST {{base}}/api/solicitudes
 Content-Type: application/json
@@ -156,6 +165,13 @@ Content-Type: application/json
 Cookie: {{sesionDerivante}}
 
 { "pacienteDni": "99112233" }
+
+### Regla 6: el DNI nuevo ya tiene otra derivación abierta en el HECA → 409
+PATCH {{base}}/api/solicitudes/{{solicitudPendiente}}
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "pacienteDni": "99000003" }
 
 
 ###############################################################################

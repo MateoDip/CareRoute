@@ -154,6 +154,12 @@ model RecursoEspecializado {
 model SolicitudTraslado {
   id              String          @id @default(cuid())
   pacienteDni     String
+  /// Regla 6 (spec §6, clase 14): copia de `pacienteDni` mientras la derivación
+  /// está abierta (PENDIENTE, EVALUANDO, APROBADA, EN_CURSO) y null cuando se
+  /// cierra (RECHAZADA, FINALIZADA). Con el @@unique de abajo, la base acepta una
+  /// sola derivación abierta por paciente y centro de origen: Postgres no compara
+  /// los null, así que las cerradas no chocan. Lo escribe solo lib/db/solicitudes.ts.
+  pacienteDniActivo String?
   estado          EstadoSolicitud @default(PENDIENTE)
   fechaSolicitud  DateTime        @default(now())
   /// H3: "se registra la fecha y hora de la decisión". Null hasta que se aprueba.
@@ -171,6 +177,7 @@ model SolicitudTraslado {
 
   actualizadaEn DateTime @updatedAt
 
+  @@unique([centroOrigenId, pacienteDniActivo])
   @@index([centroOrigenId])
   @@index([centroDestinoId])
 }

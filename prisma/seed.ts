@@ -5,7 +5,8 @@ import { PrismaClient, type RolUsuario } from "@prisma/client";
  * errores de docs/api.md (una request por fila en docs/api.http).
  *
  * Es idempotente: cada `upsert` reinicia el estado, así `npm run db:seed` deja
- * todo listo para volver a correr api.http de punta a punta.
+ * todo listo para volver a correr api.http de punta a punta. Toda solicitud
+ * abierta lleva `pacienteDniActivo` con su DNI (regla 6, clase 14).
  *
  * USUARIOS (clase 6): el login es con Google, así que para entrar con cada rol
  * hace falta un mail REAL. No se commitean: salen de .env.local.
@@ -155,11 +156,17 @@ async function main() {
   // PENDIENTE, sin triaje: corregir DNI, evaluar, 409 de "falta triaje".
   await prisma.solicitudTraslado.upsert({
     where: { id: "solicitud-pendiente-1" },
-    update: { estado: "PENDIENTE", centroDestinoId: null, fechaAprobacion: null },
+    update: {
+      estado: "PENDIENTE",
+      pacienteDniActivo: "99000010",
+      centroDestinoId: null,
+      fechaAprobacion: null,
+    },
     create: {
       id: "solicitud-pendiente-1",
       centroOrigenId: centroOrigen.id,
       pacienteDni: "99000010",
+      pacienteDniActivo: "99000010", // abierta (regla 6)
     },
   });
   await prisma.evaluacionTriaje.deleteMany({
@@ -169,11 +176,17 @@ async function main() {
   // EVALUANDO, CRÍTICO (→ UTI), sin destino: el derivante elige destino.
   await prisma.solicitudTraslado.upsert({
     where: { id: "solicitud-evaluada-1" },
-    update: { estado: "EVALUANDO", centroDestinoId: null, fechaAprobacion: null },
+    update: {
+      estado: "EVALUANDO",
+      pacienteDniActivo: "99000001",
+      centroDestinoId: null,
+      fechaAprobacion: null,
+    },
     create: {
       id: "solicitud-evaluada-1",
       centroOrigenId: centroOrigen.id,
       pacienteDni: "99000001",
+      pacienteDniActivo: "99000001", // abierta (regla 6)
       estado: "EVALUANDO",
       evaluacionTriaje: {
         create: {
@@ -192,6 +205,7 @@ async function main() {
     where: { id: "solicitud-propuesta-1" },
     update: {
       estado: "EVALUANDO",
+      pacienteDniActivo: "99000003",
       centroDestinoId: centroDestino.id,
       fechaAprobacion: null,
     },
@@ -200,6 +214,7 @@ async function main() {
       centroOrigenId: centroOrigen.id,
       centroDestinoId: centroDestino.id,
       pacienteDni: "99000003",
+      pacienteDniActivo: "99000003", // abierta (regla 6)
       estado: "EVALUANDO",
       evaluacionTriaje: {
         create: {
@@ -217,12 +232,13 @@ async function main() {
   // que intenta rechazarla (spec §6), rechazo del receptor que devuelve la cama.
   const aprobada = await prisma.solicitudTraslado.upsert({
     where: { id: "solicitud-ok-1" },
-    update: { estado: "APROBADA", centroDestinoId: centroDestino.id },
+    update: { estado: "APROBADA", pacienteDniActivo: "99000004", centroDestinoId: centroDestino.id },
     create: {
       id: "solicitud-ok-1",
       centroOrigenId: centroOrigen.id,
       centroDestinoId: centroDestino.id,
       pacienteDni: "99000004",
+      pacienteDniActivo: "99000004", // abierta (regla 6)
       estado: "APROBADA",
       fechaAprobacion: new Date("2026-09-20T14:30:00Z"),
       evaluacionTriaje: {
@@ -267,6 +283,7 @@ async function main() {
       id: "solicitud-ajena-1",
       centroOrigenId: centroSinCamas.id,
       pacienteDni: "99000002",
+      pacienteDniActivo: "99000002", // abierta (regla 6)
     },
   });
 

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { EncabezadoDelFlujo } from "@/components/encabezado-del-flujo";
 import { SinDatos } from "@/components/sin-datos";
 import { requerirMedicoEnPagina } from "@/lib/auth";
 import { rankingDeDestinos } from "@/lib/casos/ranking-destinos";
 import { obtenerSolicitudDelCentro } from "@/lib/db/solicitudes";
-import { ETIQUETA_NIVEL } from "@/lib/formato";
+import { ETIQUETA_NIVEL, formatearDni } from "@/lib/formato";
 import { elegirDestinoAction } from "./acciones";
 import { FormularioDestino } from "./formulario";
 
@@ -50,14 +51,18 @@ export default async function ElegirDestino({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Elegir destino · DNI {solicitud.pacienteDni}</h1>
-        <p className="text-muted-foreground">
-          {nivel ? `Nivel de urgencia ${ETIQUETA_NIVEL[nivel].toLowerCase()}: ` : ""}
-          el paciente necesita una cama {NOMBRE_CAMA[tipoUnidadRequerida]}. La
-          cama se reserva recién cuando el centro de destino aprueba.
-        </p>
-      </div>
+      <EncabezadoDelFlujo
+        paso={3}
+        titulo={`Elegir destino del DNI ${formatearDni(solicitud.pacienteDni)}`}
+        descripcion={
+          <>
+            {nivel ? `Nivel de urgencia ${ETIQUETA_NIVEL[nivel].toLowerCase()}: ` : ""}
+            el paciente necesita una cama {NOMBRE_CAMA[tipoUnidadRequerida]}. La cama se
+            reserva recién cuando el centro de destino aprueba.
+          </>
+        }
+        volver={{ href: volverHref, texto: "Volver a la solicitud" }}
+      />
 
       {candidatos.length === 0 ? (
         <SinDatos

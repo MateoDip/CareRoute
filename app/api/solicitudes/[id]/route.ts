@@ -5,7 +5,8 @@ import {
   obtenerSolicitudDelCentro,
 } from "@/lib/db/solicitudes";
 import { responderError } from "@/lib/errores";
-import { conflicto, errorValidacion, noEncontrado } from "@/lib/http";
+import { derivacionAbierta } from "@/lib/casos/iniciar-solicitud";
+import { conflicto, errorValidacion, noEncontrado, responderRechazo } from "@/lib/http";
 import { puedeEditarse } from "@/lib/reglas-solicitud";
 import { actualizarSolicitudSchema } from "@/lib/schemas/solicitud-traslado";
 
@@ -55,16 +56,20 @@ export async function PATCH(request: Request, { params }: Contexto) {
       });
     }
 
-    // 6. DELEGAR — condicional: si justo la evaluaron, no se pisa.
-    const actualizada = await actualizarSolicitudPendiente({
+    // 6. DELEGAR — condicional: si justo la evaluaron, no se pisa. Si el DNI
+    // nuevo ya tiene una derivación abierta, la base lo rechaza (regla 6).
+    const correccion = await actualizarSolicitudPendiente({
       id,
       centroOrigenId: usuario.centroSaludId,
       datos: datos.data,
     });
-    if (!actualizada) {
+    if (correccion.resultado === "ESTADO_CAMBIO") {
       return conflicto("La solicitud cambió de estado mientras se procesaba");
     }
-    return NextResponse.json(actualizada, { status: 200 });
+    if (correccion.resultado === "DERIVACION_ABIERTA") {
+      return responderRechazo(derivacionAbierta());
+    }
+    return NextResponse.json(correccion.solicitud, { status: 200 });
   } catch (error) {
     return responderError("PATCH /api/solicitudes/:id", error);
   }

@@ -9,14 +9,28 @@ import { cn } from "@/lib/utils";
  * van en fila, el principal a la derecha.
  */
 
-/** El error de regla de negocio o de servicio (409 / 502): arriba del formulario, con texto. */
-export function ErrorDelFormulario({ mensaje }: { mensaje?: string }) {
+/**
+ * El error de regla de negocio o de servicio (409 / 502): arriba del formulario,
+ * con texto y, si hay, el enlace para resolverlo.
+ */
+export function ErrorDelFormulario({
+  mensaje,
+  enlace,
+}: {
+  mensaje?: string;
+  enlace?: { href: string; texto: string };
+}) {
   if (!mensaje) return null;
   return (
     <Alert variant="destructive">
       <AlertTitle>No se pudo guardar</AlertTitle>
       <AlertDescription>
         <p>{mensaje}</p>
+        {enlace && (
+          <Link href={enlace.href} className="font-semibold text-destructive underline underline-offset-4">
+            {enlace.texto}
+          </Link>
+        )}
       </AlertDescription>
     </Alert>
   );

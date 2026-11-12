@@ -1,8 +1,8 @@
-import type {
-  EstadoSolicitud,
-  OrigenNivelUrgencia,
+import {
   Prisma,
-  TipoUnidad,
+  type EstadoSolicitud,
+  type OrigenNivelUrgencia,
+  type TipoUnidad,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
@@ -24,6 +24,10 @@ import type { EvaluacionAGuardar } from "@/lib/schemas/evaluacion-triaje";
  *  - Las escrituras que dependen del estado son condicionales (`updateMany` con
  *    el estado esperado en el `where`): si otro usuario cambió la solicitud en el
  *    medio, no se pisa nada y se devuelve null.
+ *  - Regla 6 (clase 14): `pacienteDniActivo` lleva el DNI mientras la derivación
+ *    está abierta y null cuando se cierra. Lo escriben solo las funciones de este
+ *    archivo: al crear, al corregir el DNI y al rechazar. Una transición nueva a
+ *    FINALIZADA también tiene que ponerlo en null.
  */
 
 const LIMITE_LISTADO = 50;
@@ -81,7 +85,12 @@ export async function listarSolicitudesDelCentro(params: {
     where: {
       AND: [filtroPorLado(centroSaludId, rol ?? "cualquiera"), estado ? { estado } : {}],
     },
-    select: { ...camposSolicitud, ...camposCentros },
+    select: {
+      ...camposSolicitud,
+      ...camposCentros,
+      // Solo el nivel: el listado lo muestra con el color del triaje.
+      evaluacionTriaje: { select: { nivelUrgenciaSugerido: true } },
+    },
     orderBy: { fechaSolicitud: "desc" },
     take: LIMITE_LISTADO,
   });
@@ -126,36 +135,87 @@ export async function obtenerSolicitudDelCentro(
   });
 }
 
+/**
+ * El índice único (centroOrigenId, pacienteDniActivo) rechazó la escritura: el
+ * paciente ya tiene una derivación abierta en ese centro (regla 6). Es un
+ * resultado esperado —un doble toque, dos pestañas, dos médicos a la vez—, no un
+ * error del servidor: se devuelve, no se lanza. Es el único @unique de la tabla
+ * además del id.
+ */
+function esDerivacionAbiertaDuplicada(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/** La derivación abierta del paciente en ese centro, para decirle cuál es. null si no hay. */
+export async function buscarDerivacionAbierta(centroOrigenId: string, pacienteDni: string) {
+  return prisma.solicitudTraslado.findFirst({
+    where: { centroOrigenId, pacienteDniActivo: pacienteDni },
+    select: { id: true },
+  });
+}
+
+/**
+ * Crea la solicitud, o devuelve null si el paciente ya tiene una derivación
+ * abierta desde ese centro (regla 6).
+ *
+ * No pregunta antes: entre "¿ya tiene una?" y guardar hay un hueco por el que
+ * pasan dos pedidos simultáneos (clase 14). Intenta guardar y la base, con el
+ * índice único, acepta el primero y rechaza el resto (P2002).
+ */
 export async function crearSolicitud(
   datos: CrearSolicitud,
   centroOrigenId: string,
 ) {
-  return prisma.solicitudTraslado.create({
-    data: {
-      pacienteDni: datos.pacienteDni,
-      centroOrigenId,
-    },
-    select: camposSolicitud,
-  });
+  try {
+    return await prisma.solicitudTraslado.create({
+      data: {
+        pacienteDni: datos.pacienteDni,
+        pacienteDniActivo: datos.pacienteDni,
+        centroOrigenId,
+      },
+      select: camposSolicitud,
+    });
+  } catch (error) {
+    if (esDerivacionAbiertaDuplicada(error)) return null;
+    throw error;
+  }
 }
 
-/** Corrige datos solo si sigue PENDIENTE y es del centro de origen. Si no, null. */
+export type ResultadoCorreccion =
+  | { resultado: "CORREGIDA"; solicitud: Prisma.SolicitudTrasladoGetPayload<{ select: typeof camposSolicitud }> }
+  | { resultado: "ESTADO_CAMBIO" }
+  | { resultado: "DERIVACION_ABIERTA" };
+
+/**
+ * Corrige el DNI solo si sigue PENDIENTE y es del centro de origen.
+ *
+ * Si el DNI nuevo es de un paciente con otra derivación abierta en el centro, la
+ * base lo rechaza con el mismo índice único que al crear (regla 6).
+ */
 export async function actualizarSolicitudPendiente(params: {
   id: string;
   centroOrigenId: string;
   datos: ActualizarSolicitud;
-}) {
+}): Promise<ResultadoCorreccion> {
   const { id, centroOrigenId, datos } = params;
-  const { count } = await prisma.solicitudTraslado.updateMany({
-    where: { id, centroOrigenId, estado: "PENDIENTE" },
-    data: datos,
-  });
-  if (count === 0) return null;
+  try {
+    const { count } = await prisma.solicitudTraslado.updateMany({
+      where: { id, centroOrigenId, estado: "PENDIENTE" },
+      data: datos.pacienteDni
+        ? { ...datos, pacienteDniActivo: datos.pacienteDni }
+        : datos,
+    });
+    if (count === 0) return { resultado: "ESTADO_CAMBIO" };
+  } catch (error) {
+    if (esDerivacionAbiertaDuplicada(error)) return { resultado: "DERIVACION_ABIERTA" };
+    throw error;
+  }
 
-  return prisma.solicitudTraslado.findUnique({
+  const solicitud = await prisma.solicitudTraslado.findUniqueOrThrow({
     where: { id },
     select: camposSolicitud,
   });
+  return { resultado: "CORREGIDA", solicitud };
 }
 
 /**
@@ -293,9 +353,10 @@ export async function rechazarSolicitud(params: {
   const { solicitudId, estadoLeido, camaALiberar } = params;
 
   return prisma.$transaction(async (tx) => {
+    // Cerrada: el paciente ya se puede volver a derivar desde ese centro (regla 6).
     const cambio = await tx.solicitudTraslado.updateMany({
       where: { id: solicitudId, estado: estadoLeido },
-      data: { estado: "RECHAZADA" },
+      data: { estado: "RECHAZADA", pacienteDniActivo: null },
     });
     if (cambio.count === 0) return null;
 

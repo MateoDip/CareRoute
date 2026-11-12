@@ -59,7 +59,9 @@ cumple el papel de `creadaEn`).
 
 Índices: toda FK por la que se filtra tiene `@@index` (`centroSaludId`, `centroOrigenId`,
 `centroDestinoId`, `solicitudId`, `tripulacionMedicaId`). La clave compuesta de
-`AsignacionTripulacion` ya indexa `solicitudId`.
+`AsignacionTripulacion` ya indexa `solicitudId`. `SolicitudTraslado` tiene además el índice
+único `(centroOrigenId, pacienteDniActivo)` de la regla 6. Las mediciones con 50.000
+solicitudes están en [`docs/rendimiento.md`](./rendimiento.md).
 
 ## 4. Historias de usuario
 
@@ -73,6 +75,7 @@ README.
 
 - [x] **Dado** que el médico tiene centro asignado, **cuando** envía el DNI del paciente, **entonces** el sistema crea una `SolicitudTraslado` `PENDIENTE` vinculada a su `CentroSalud` de origen.
 - [x] **Caso de error:** **dado** que falta un campo obligatorio (ej. presión arterial), **cuando** intenta avanzar, **entonces** el sistema bloquea la acción, señala el campo faltante y mantiene lo ya cargado.
+- [x] **Caso de error (regla 6):** **dado** que el paciente ya tiene una derivación abierta desde mi centro, **cuando** inicio otra con su DNI (o la inicio dos veces a la vez), **entonces** el sistema guarda una sola, me avisa que ya hay una abierta y me lleva a esa.
 
 ### HU02 — Sugerencia de urgencia por IA
 **Como** médico derivante, **quiero** que el sistema sugiera un nivel de urgencia a partir de los signos vitales, **para** decidir la derivación más rápido.
@@ -155,6 +158,7 @@ Las restricciones que **no** son obvias y que la IA no puede adivinar. Estas son
 3. Una `SolicitudTraslado` "Aprobada" ya no puede cancelarla el centro emisor: solo el receptor, que es quien reservó la cama. Al rechazarla, la cama vuelve al centro.
 4. Un usuario que se registra con Google entra como médico derivante **sin centro** y no puede operar hasta que un admin le asigne centro (y, si corresponde, rol). Nadie puede asignarse un rol a sí mismo, y un admin no puede quitarse su propio rol.
 5. No se puede dar de baja un centro que tenga usuarios o derivaciones (el historial es inmutable).
+6. Un paciente (por DNI) no puede tener más de una derivación **abierta** (`PENDIENTE`, `EVALUANDO`, `APROBADA` o `EN_CURSO`) desde el mismo centro de origen: dos derivaciones del mismo paciente reservarían dos camas para una persona. Cuando la derivación se rechaza o finaliza, el paciente se puede volver a derivar. Es una regla de "uno solo" (clase 14): la cumple la base con un índice único, no un `if` (ADR 0010). El alcance es el centro de origen a propósito: un 409 por una derivación de otro hospital revelaría que ese paciente está siendo derivado allá.
 
 ## 7. Requisitos no funcionales
 
@@ -191,29 +195,49 @@ Esta lista es **igual para todos los proyectos**: no hay que adaptarla, hay que 
   nativos (`<a>`, `<button>`, `<select>`); el foco es un anillo sólido de 2 px (`components/ui/`) o
   un contorno del color `--ring` (`app/globals.css`). Recorrido con Tab verificado en `/sistema`.
 - [x] Los campos de formulario tienen `label` asociado, no solo *placeholder* (`htmlFor` + `useId`
-  en el filtro; ver `/sistema`).
+  en `components/campo.tsx`; los grupos de opciones, con `fieldset` y `legend`; el filtro del
+  listado es un grupo de botones con `aria-pressed`, nombrado con `aria-labelledby`). Las
+  pruebas e2e buscan cada campo por su etiqueta: si se pierde la asociación, fallan.
 - [x] Las imágenes que informan tienen texto alternativo; las decorativas, alternativo vacío. No hay
   imágenes; el esqueleto de carga es `aria-hidden` y la pantalla anuncia "Cargando…" con `role="status"`.
 - [x] El **contraste** entre texto y fondo llega a **4,5:1** (3:1 si la letra es grande). Ver la tabla.
 - [x] El error nunca se comunica **solo con color**: siempre hay texto. Las alertas tienen título y
   descripción, los campos con error un mensaje debajo, y cada badge dice su estado.
 
-**Contraste de los tokens** (`app/globals.css`, calculado con la fórmula de WCAG 2.1). Si se cambia
-un color, se recalcula esta tabla.
+**Contraste de los tokens** (`app/globals.css`, calculado con la fórmula de WCAG 2.1 por
+`npm run contraste`, que falla si algún par no llega a su mínimo). Si se cambia un color, se
+corre de nuevo y se reemplaza esta tabla.
 
-| Par (texto / fondo) | Claro | Oscuro |
-|---|---|---|
-| `foreground` / `background` | 19,8:1 | 19,0:1 |
-| `muted-foreground` / `background` | 7,7:1 | 7,7:1 |
-| `muted-foreground` / `card` | 7,7:1 | 6,9:1 |
-| `muted-foreground` / `muted` (hover) | 7,0:1 | 5,8:1 |
-| `primary-foreground` / `primary` (botón) | 6,7:1 | 7,8:1 |
-| `primary` / `background` (enlace) | 6,7:1 | 7,8:1 |
-| `secondary-foreground` / `secondary` | 16,1:1 | 14,3:1 |
-| `destructive` / `card` (texto de error) | 6,5:1 | 6,4:1 |
-| `destructive-foreground` / `destructive` | 6,5:1 | 7,2:1 |
-| `ring` / `background` (foco, mínimo 3:1) | 6,7:1 | 7,8:1 |
-| `input` / `card` (borde de campo, mínimo 3:1) | 4,8:1 | 3,7:1 |
+| Par (texto / fondo) | Uso | Claro | Oscuro |
+|---|---|---|---|
+| `foreground` / `background` | texto (mín. 4,5) | 15,8:1 | 15,8:1 |
+| `foreground` / `card` | texto en tarjeta (mín. 4,5) | 17,3:1 | 14,2:1 |
+| `muted-foreground` / `background` | texto secundario (mín. 4,5) | 6,5:1 | 8,6:1 |
+| `muted-foreground` / `card` | texto secundario en tarjeta (mín. 4,5) | 7,1:1 | 7,8:1 |
+| `muted-foreground` / `muted` | texto secundario (hover) (mín. 4,5) | 6,1:1 | 6,5:1 |
+| `primary-foreground` / `primary` | botón principal (mín. 4,5) | 7,7:1 | 8,7:1 |
+| `primary` / `background` | enlace (mín. 4,5) | 7,0:1 | 9,7:1 |
+| `primary` / `card` | enlace en tarjeta (mín. 4,5) | 7,7:1 | 8,7:1 |
+| `primary` / `accent` | badge suave / opción elegida (mín. 4,5) | 6,5:1 | 6,8:1 |
+| `accent-foreground` / `accent` | hover (mín. 4,5) | 14,7:1 | 11,0:1 |
+| `secondary-foreground` / `secondary` | botón secundario (mín. 4,5) | 14,5:1 | 11,9:1 |
+| `destructive` / `card` | texto de error (mín. 4,5) | 6,6:1 | 6,8:1 |
+| `destructive` / `destructive-suave` | badge de rechazo (mín. 4,5) | 5,8:1 | 6,6:1 |
+| `destructive-foreground` / `destructive` | botón destructivo (mín. 4,5) | 6,6:1 | 7,6:1 |
+| `triaje-rojo-texto` / `triaje-rojo-suave` | badge nivel crítico (mín. 4,5) | 7,8:1 | 9,7:1 |
+| `triaje-naranja-texto` / `triaje-naranja-suave` | badge nivel alto (mín. 4,5) | 7,4:1 | 10,0:1 |
+| `triaje-amarillo-texto` / `triaje-amarillo-suave` | badge nivel medio (mín. 4,5) | 7,5:1 | 10,3:1 |
+| `triaje-verde-texto` / `triaje-verde-suave` | badge nivel bajo (mín. 4,5) | 7,2:1 | 9,5:1 |
+| `ring` / `background` | foco (mín. 3) | 7,0:1 | 9,7:1 |
+| `ring` / `card` | foco en tarjeta (mín. 3) | 7,7:1 | 8,7:1 |
+| `input` / `card` | borde de campo (mín. 3) | 4,4:1 | 5,0:1 |
+| `triaje-rojo` / `card` | franja de nivel crítico (mín. 3) | 5,7:1 | 5,3:1 |
+| `triaje-naranja` / `card` | franja de nivel alto (mín. 3) | 4,1:1 | 7,5:1 |
+| `triaje-verde` / `card` | franja de nivel bajo (mín. 3) | 4,3:1 | 7,3:1 |
+
+La franja amarilla del nivel medio no llega a 3:1 sobre blanco (es el amarillo del triaje) y
+no está en la tabla a propósito: es decorativa. El nivel siempre está escrito en el badge de
+al lado, con texto que sí llega a 7,5:1.
 
 ## 8. Integración externa
 
