@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatearFechaHora } from "./formato";
+import { formatearDni, formatearFechaHora, iniciales } from "./formato";
 
 describe("formatearFechaHora", () => {
   it("muestra la hora de Argentina aunque el servidor corra en UTC", () => {
@@ -16,5 +16,27 @@ describe("formatearFechaHora", () => {
 
     expect(texto).toContain("9/11");
     expect(texto).toContain("22:00");
+  });
+});
+
+describe("formatearDni", () => {
+  it("separa los miles con punto, como se lee un DNI", () => {
+    expect(formatearDni("99000003")).toBe("99.000.003");
+    expect(formatearDni("1234567")).toBe("1.234.567");
+  });
+
+  it("deja igual lo que no son solo números", () => {
+    expect(formatearDni("12.345")).toBe("12.345");
+  });
+});
+
+describe("iniciales", () => {
+  it("toma nombre y apellido, sin el título ni lo que va entre paréntesis", () => {
+    expect(iniciales("Dra. Gómez (Receptora Centenario)")).toBe("G");
+    expect(iniciales("Dr. Juan Pérez")).toBe("JP");
+  });
+
+  it("con un mail como nombre, usa la parte de antes de la arroba", () => {
+    expect(iniciales("mateo@careroute.test")).toBe("MC");
   });
 });

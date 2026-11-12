@@ -81,7 +81,12 @@ export async function listarSolicitudesDelCentro(params: {
     where: {
       AND: [filtroPorLado(centroSaludId, rol ?? "cualquiera"), estado ? { estado } : {}],
     },
-    select: { ...camposSolicitud, ...camposCentros },
+    select: {
+      ...camposSolicitud,
+      ...camposCentros,
+      // Solo el nivel: el listado lo muestra con el color del triaje.
+      evaluacionTriaje: { select: { nivelUrgenciaSugerido: true } },
+    },
     orderBy: { fechaSolicitud: "desc" },
     take: LIMITE_LISTADO,
   });

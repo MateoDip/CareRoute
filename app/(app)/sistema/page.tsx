@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { BadgeEstado, BadgeNivel } from "@/components/estado-solicitud";
+import {
+  BadgeEstado,
+  BadgeNivel,
+  PasosDelTraslado,
+} from "@/components/estado-solicitud";
 import {
   FiltroSolicitudes,
   type SolicitudEnLista,
 } from "@/components/filtro-solicitudes";
+import { FranjaTriaje, Marca } from "@/components/marca";
 import { SinDatos } from "@/components/sin-datos";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -31,21 +36,27 @@ const EJEMPLOS: SolicitudEnLista[] = [
     id: "ejemplo-1",
     pacienteDni: "00000001",
     estado: "EVALUANDO",
-    sentido: "Saliente · a Hospital de ejemplo",
+    nivel: "CRITICO",
+    sentido: "saliente",
+    otroCentro: "Hospital de ejemplo",
     fecha: "9/11/26, 20:30",
   },
   {
     id: "ejemplo-2",
     pacienteDni: "00000002",
     estado: "APROBADA",
-    sentido: `Entrante · desde ${CENTRO_LARGO}`,
+    nivel: "MEDIO",
+    sentido: "entrante",
+    otroCentro: CENTRO_LARGO,
     fecha: "9/11/26, 18:05",
   },
   {
     id: "ejemplo-3",
     pacienteDni: "00000003",
     estado: "PENDIENTE",
-    sentido: "Saliente · sin destino todavía",
+    nivel: null,
+    sentido: "saliente",
+    otroCentro: null,
     fecha: "8/11/26, 07:45",
   },
 ];
@@ -68,7 +79,7 @@ export default async function Sistema() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Sistema visual</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Sistema visual</h1>
         <p className="text-muted-foreground">
           Componentes compartidos y sus estados. Recorrela con Tab para ver el
           foco, y en el inspector a 375 px de ancho.
@@ -92,12 +103,28 @@ export default async function Sistema() {
         </div>
       </Seccion>
 
+      <Seccion titulo="Marca y colores del triaje">
+        <Marca />
+        <p className="text-sm text-muted-foreground">
+          Los cuatro colores del triaje se usan solo para el nivel de urgencia.
+        </p>
+        <FranjaTriaje className="max-w-xs" />
+      </Seccion>
+
       <Seccion titulo="Badges">
         <div className="flex flex-wrap gap-2">
           <Badge>Principal</Badge>
           <Badge variant="secondary">Secundario</Badge>
           <Badge variant="outline">Contorno</Badge>
           <Badge variant="destructive">Destructivo</Badge>
+          <Badge variant="suave">Suave</Badge>
+          <Badge variant="destructivo-suave">Destructivo suave</Badge>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="rojo">Rojo</Badge>
+          <Badge variant="naranja">Naranja</Badge>
+          <Badge variant="amarillo">Amarillo</Badge>
+          <Badge variant="verde">Verde</Badge>
         </div>
         <p className="text-sm text-muted-foreground">Estados de una solicitud:</p>
         <div className="flex flex-wrap gap-2">
@@ -111,6 +138,15 @@ export default async function Sistema() {
             <BadgeNivel key={nivel} nivel={nivel} />
           ))}
         </div>
+      </Seccion>
+
+      <Seccion titulo="Pasos">
+        <p className="text-sm text-muted-foreground">
+          En el teléfono se ve el paso actual en palabras; desde 640 px, el título de cada paso.
+        </p>
+        <PasosDelTraslado estado="EVALUANDO" tieneTriaje tieneDestino fueAprobada={false} />
+        <PasosDelTraslado estado="RECHAZADA" tieneTriaje tieneDestino={false} fueAprobada={false} />
+        <PasosDelTraslado estado="FINALIZADA" tieneTriaje tieneDestino fueAprobada />
       </Seccion>
 
       <Seccion titulo="Campos">
@@ -192,7 +228,8 @@ export default async function Sistema() {
 
       <Seccion titulo="Listado, sin resultados y texto largo">
         <p className="text-sm text-muted-foreground">
-          Datos de ejemplo. Elegí «Rechazada» para ver el estado sin resultados.
+          Datos de ejemplo. Elegí «Rechazada» para ver el estado sin resultados. La
+          franja de la izquierda es el color del nivel; sin triaje, el del borde.
         </p>
         <FiltroSolicitudes solicitudes={EJEMPLOS} estados={estados} />
         <SinDatos

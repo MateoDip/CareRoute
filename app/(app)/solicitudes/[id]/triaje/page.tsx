@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { EncabezadoDelFlujo } from "@/components/encabezado-del-flujo";
 import { SinDatos } from "@/components/sin-datos";
+import { Card, CardContent } from "@/components/ui/card";
 import { requerirMedicoEnPagina } from "@/lib/auth";
 import { obtenerSolicitudDelCentro } from "@/lib/db/solicitudes";
-import { ETIQUETA_NIVEL } from "@/lib/formato";
+import { ETIQUETA_NIVEL, formatearDni } from "@/lib/formato";
 import { nivelUrgenciaSchema } from "@/lib/schemas/evaluacion-triaje";
 import { registrarTriajeAction } from "./acciones";
 import { FormularioTriaje } from "./formulario";
@@ -43,18 +45,21 @@ export default async function Triaje({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Triaje · DNI {solicitud.pacienteDni}</h1>
-        <p className="text-muted-foreground">
-          La IA sugiere el nivel de urgencia; la decisión de derivar la sigue
-          tomando un médico.
-        </p>
-      </div>
-      <FormularioTriaje
-        accion={registrarTriajeAction.bind(null, solicitud.id)}
-        niveles={niveles}
-        volverHref={volverHref}
+      <EncabezadoDelFlujo
+        paso={2}
+        titulo={`Triaje del DNI ${formatearDni(solicitud.pacienteDni)}`}
+        descripcion="Cargá los signos vitales. La IA sugiere el nivel de urgencia; la decisión de derivar la sigue tomando un médico."
+        volver={{ href: volverHref, texto: "Volver a la solicitud" }}
       />
+      <Card>
+        <CardContent>
+          <FormularioTriaje
+            accion={registrarTriajeAction.bind(null, solicitud.id)}
+            niveles={niveles}
+            volverHref={volverHref}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export default async function Ingresar({ searchParams }: Props) {
   return (
     <>
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold">Ingresar</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Ingresar</h1>
         <p className="text-muted-foreground">
           Coordinación de derivaciones entre centros de salud. Entrá con la
           cuenta de Google que te habilitó tu centro.
@@ -31,10 +31,14 @@ export default async function Ingresar({ searchParams }: Props) {
         </Alert>
       )}
 
-      <form action={entrarConGoogle}>
+      <form action={entrarConGoogle} className="flex flex-col gap-3">
         <Button type="submit" size="lg" className="w-full">
           Entrar con Google
         </Button>
+        <p className="text-sm text-muted-foreground">
+          Si es tu primera vez, un administrador tiene que asignarte un centro
+          antes de que puedas derivar.
+        </p>
       </form>
     </>
   );

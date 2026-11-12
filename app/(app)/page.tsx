@@ -1,18 +1,18 @@
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   FiltroSolicitudes,
   type SolicitudEnLista,
 } from "@/components/filtro-solicitudes";
 import { SinDatos } from "@/components/sin-datos";
 import { requerirMedicoEnPagina } from "@/lib/auth";
+import { nombreDelCentro } from "@/lib/db/centros";
 import { listarSolicitudesDelCentro } from "@/lib/db/solicitudes";
 import { ETIQUETA_ESTADO, formatearFechaHora } from "@/lib/formato";
 import {
   estadoSolicitudSchema,
   filtroSolicitudesSchema,
 } from "@/lib/schemas/solicitud-traslado";
+import { cn } from "@/lib/utils";
 
 type Props = { searchParams: Promise<{ rol?: string | string[] }> };
 
@@ -36,12 +36,22 @@ const TEXTOS = {
   },
 } as const;
 
+/** Las tres vistas del listado: todas, las que llegan y las que salen. */
+const VISTAS = [
+  { rol: undefined, texto: "Todas", href: "/" },
+  { rol: "destino", texto: "Entrantes", href: "/?rol=destino" },
+  { rol: "origen", texto: "Salientes", href: "/?rol=origen" },
+] as const;
+
 /**
  * / — las solicitudes del centro del médico (HU06, HU07). Server Component.
  *
  * Lee de lib/db/ con un await, sin fetch a la propia API, y con el centro de la
  * sesión dentro de la consulta: la misma que usa GET /api/solicitudes. Con
  * ?rol=destino muestra solo las entrantes (link "Entrantes" de la barra).
+ *
+ * Las dos consultas no dependen una de la otra: van juntas en Promise.all y la
+ * pantalla espera solo a la más lenta (clase 14).
  *
  * Los cinco estados (clase 10): cargando → loading.tsx · error → error.tsx ·
  * vacío → SinDatos, acá · sin resultados → el filtro · con datos → el listado.
@@ -59,23 +69,23 @@ export default async function Inicio({ searchParams }: Props) {
   // Solo el derivante inicia derivaciones (HU01); la API se lo niega al resto.
   const puedeIniciar = usuario.rol === "MEDICO_DERIVANTE";
 
-  const solicitudes = await listarSolicitudesDelCentro({
-    centroSaludId: usuario.centroSaludId,
-    rol,
-  });
+  const [solicitudes, centro] = await Promise.all([
+    listarSolicitudesDelCentro({ centroSaludId: usuario.centroSaludId, rol }),
+    nombreDelCentro(usuario.centroSaludId),
+  ]);
 
   // Props serializables para el componente de cliente: texto, no Date.
   const filas: SolicitudEnLista[] = solicitudes.map((solicitud) => {
     const esSaliente = solicitud.centroOrigenId === usuario.centroSaludId;
-    const sentido = esSaliente
-      ? `Saliente · ${solicitud.centroDestino ? `a ${solicitud.centroDestino.nombre}` : "sin destino todavía"}`
-      : `Entrante · desde ${solicitud.centroOrigen.nombre}`;
-
     return {
       id: solicitud.id,
       pacienteDni: solicitud.pacienteDni,
       estado: solicitud.estado,
-      sentido,
+      nivel: solicitud.evaluacionTriaje?.nivelUrgenciaSugerido ?? null,
+      sentido: esSaliente ? "saliente" : "entrante",
+      otroCentro: esSaliente
+        ? (solicitud.centroDestino?.nombre ?? null)
+        : solicitud.centroOrigen.nombre,
       fecha: formatearFechaHora(solicitud.fechaSolicitud),
     };
   });
@@ -87,14 +97,26 @@ export default async function Inicio({ searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{textos.titulo}</h1>
-        {puedeIniciar && (
-          <Link href="/solicitudes/nueva" className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}>
-            Nueva solicitud
-          </Link>
-        )}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{textos.titulo}</h1>
+        {centro && <p className="text-muted-foreground">{centro}</p>}
       </div>
+
+      <nav aria-label="Vistas del listado" className="-mt-2 flex gap-1 border-b">
+        {VISTAS.map((vista) => (
+          <Link
+            key={vista.texto}
+            href={vista.href}
+            aria-current={vista.rol === rol ? "page" : undefined}
+            className={cn(
+              "-mb-px rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+              "aria-[current=page]:border-primary aria-[current=page]:text-primary",
+            )}
+          >
+            {vista.texto}
+          </Link>
+        ))}
+      </nav>
 
       {filas.length === 0 ? (
         <SinDatos

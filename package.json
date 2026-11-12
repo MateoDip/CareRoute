@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "db:seed": "prisma db seed",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "contraste": "tsx scripts/contraste.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

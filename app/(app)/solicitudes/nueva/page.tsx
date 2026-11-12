@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { EncabezadoDelFlujo } from "@/components/encabezado-del-flujo";
+import { Card, CardContent } from "@/components/ui/card";
 import { requerirMedicoEnPagina } from "@/lib/auth";
 import { FormularioNuevaSolicitud } from "./formulario";
 
@@ -13,14 +15,17 @@ export default async function NuevaSolicitud() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Nueva solicitud de derivación</h1>
-        <p className="text-muted-foreground">
-          Empezá con el DNI del paciente. En el paso siguiente cargás los signos
-          vitales y la IA sugiere el nivel de urgencia.
-        </p>
-      </div>
-      <FormularioNuevaSolicitud />
+      <EncabezadoDelFlujo
+        paso={1}
+        titulo="Nueva solicitud de derivación"
+        descripcion="Empezá con el DNI del paciente. En el paso siguiente cargás los signos vitales y la IA sugiere el nivel de urgencia."
+        volver={{ href: "/", texto: "Volver a las solicitudes" }}
+      />
+      <Card>
+        <CardContent>
+          <FormularioNuevaSolicitud />
+        </CardContent>
+      </Card>
     </div>
   );
 }

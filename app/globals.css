@@ -1,62 +1,98 @@
 @import "tailwindcss";
 
 /*
- * Tokens del sistema visual (clase 10). Es la fuente de verdad del diseño: los
- * componentes usan estas variables (bg-primary, text-muted-foreground…), nunca
- * colores sueltos. Prohibido el CSS suelto: ni .module.css ni style inline.
+ * Tokens del sistema visual (clases 10 y 13). Es la fuente de verdad del diseño:
+ * los componentes usan estas variables (bg-primary, text-muted-foreground…),
+ * nunca colores sueltos. Prohibido el CSS suelto: ni .module.css ni style inline.
  *
- * Cada par texto/fondo está verificado en ≥ 4,5:1, y bordes de campos y foco en
- * ≥ 3:1, en los dos temas. La tabla de valores está en docs/spec.md §7: si se
- * cambia un color acá, se recalcula allá.
+ * Dirección visual: la de una guardia. Fondo gris frío de pared de hospital,
+ * tinta azul petróleo para todo lo que se opera, y los colores del triaje
+ * (rojo, naranja, amarillo, verde) reservados para una sola cosa: el nivel de
+ * urgencia. Ningún otro elemento usa esos cuatro colores, así no se confunden.
+ *
+ * Cada par texto/fondo está verificado en ≥ 4,5:1, y bordes, foco y franjas en
+ * ≥ 3:1, en los dos temas: `npm run contraste` imprime la tabla de docs/spec.md §7
+ * y falla si algún par no llega. Si se cambia un color acá, se corre de nuevo.
  *
  * Estructura de shadcn/ui (new-york). El tema oscuro sigue la preferencia del
- * sistema operativo, igual que antes: no hay selector manual.
+ * sistema operativo: no hay selector manual.
  */
 :root {
   --radius: 0.625rem;
 
-  --background: #ffffff;
-  --foreground: #0a0a0a;
+  --background: #f2f5f7;
+  --foreground: #0e1c26;
   --card: #ffffff;
-  --card-foreground: #0a0a0a;
-  --primary: #1d4ed8;
+  --card-foreground: #0e1c26;
+  --primary: #0b5b70;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #52525b;
-  --accent: #f4f4f5;
-  --accent-foreground: #18181b;
-  --destructive: #b91c1c;
+  --secondary: #e4ecf0;
+  --secondary-foreground: #0e1c26;
+  --muted: #e9eef1;
+  --muted-foreground: #4a5a66;
+  --accent: #e1eff3;
+  --accent-foreground: #0e1c26;
+  --destructive: #b42318;
   --destructive-foreground: #ffffff;
-  --border: #e4e4e7;
-  --input: #71717a;
-  --ring: #1d4ed8;
+  --destructive-suave: #fdeceb;
+  --border: #d5dee3;
+  --input: #6b7a85;
+  --ring: #0b5b70;
+
+  /* Triaje: franja (gráfico), fondo suave y texto de cada nivel. */
+  --triaje-rojo: #c4271b;
+  --triaje-rojo-suave: #fdeceb;
+  --triaje-rojo-texto: #8f1d14;
+  --triaje-naranja: #d2570b;
+  --triaje-naranja-suave: #fff0e3;
+  --triaje-naranja-texto: #873604;
+  --triaje-amarillo: #e8b800;
+  --triaje-amarillo-suave: #fff6cc;
+  --triaje-amarillo-texto: #634c00;
+  --triaje-verde: #2f8a46;
+  --triaje-verde-suave: #e5f4e8;
+  --triaje-verde-texto: #1c5a2c;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #fafafa;
-    --card: #18181b;
-    --card-foreground: #fafafa;
-    --primary: #60a5fa;
-    --primary-foreground: #0a0a0a;
-    --secondary: #27272a;
-    --secondary-foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --accent: #27272a;
-    --accent-foreground: #fafafa;
-    --destructive: #f87171;
-    --destructive-foreground: #0a0a0a;
-    --border: #3f3f46;
-    --input: #71717a;
-    --ring: #60a5fa;
+    --background: #0b151c;
+    --foreground: #e8eef2;
+    --card: #12202a;
+    --card-foreground: #e8eef2;
+    --primary: #6cc9dd;
+    --primary-foreground: #04222b;
+    --secondary: #1d2e39;
+    --secondary-foreground: #e8eef2;
+    --muted: #1d2e39;
+    --muted-foreground: #a3b4bf;
+    --accent: #173543;
+    --accent-foreground: #e8eef2;
+    --destructive: #f4877b;
+    --destructive-foreground: #2a0703;
+    --destructive-suave: #3a1714;
+    --border: #283a45;
+    --input: #7f909b;
+    --ring: #6cc9dd;
+
+    --triaje-rojo: #f0645a;
+    --triaje-rojo-suave: #3a1714;
+    --triaje-rojo-texto: #ffb8b0;
+    --triaje-naranja: #f2994a;
+    --triaje-naranja-suave: #3a2311;
+    --triaje-naranja-texto: #ffcba1;
+    --triaje-amarillo: #f0cb3c;
+    --triaje-amarillo-suave: #342b09;
+    --triaje-amarillo-texto: #f5dc7c;
+    --triaje-verde: #5cc077;
+    --triaje-verde-suave: #13301c;
+    --triaje-verde-texto: #a3e1b2;
   }
 }
 
 @theme inline {
+  --font-sans: var(--fuente-hiperlegible), ui-sans-serif, system-ui, sans-serif;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -71,9 +107,23 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-suave: var(--destructive-suave);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --color-triaje-rojo: var(--triaje-rojo);
+  --color-triaje-rojo-suave: var(--triaje-rojo-suave);
+  --color-triaje-rojo-texto: var(--triaje-rojo-texto);
+  --color-triaje-naranja: var(--triaje-naranja);
+  --color-triaje-naranja-suave: var(--triaje-naranja-suave);
+  --color-triaje-naranja-texto: var(--triaje-naranja-texto);
+  --color-triaje-amarillo: var(--triaje-amarillo);
+  --color-triaje-amarillo-suave: var(--triaje-amarillo-suave);
+  --color-triaje-amarillo-texto: var(--triaje-amarillo-texto);
+  --color-triaje-verde: var(--triaje-verde);
+  --color-triaje-verde-suave: var(--triaje-verde-suave);
+  --color-triaje-verde-texto: var(--triaje-verde-texto);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -88,6 +138,14 @@
 
   body {
     @apply bg-background text-foreground;
+    /* Cifras de igual ancho: los DNI, horas y signos vitales se alinean. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 
   /*
