@@ -11,7 +11,8 @@
     "test": "vitest run --passWithNoTests",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
-    "contraste": "tsx scripts/contraste.ts"
+    "contraste": "tsx scripts/contraste.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",

@@ -10,7 +10,15 @@ const compat = new FlatCompat({ baseDirectory: __dirname });
 const eslintConfig = [
   // Artefactos de build: los genera Next, no son código fuente y no se lintean.
   {
-    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts"],
+    ignores: [
+      ".next/**",
+      ".next-e2e/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+      "playwright-report/**",
+      "test-results/**",
+    ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {

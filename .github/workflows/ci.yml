@@ -1,19 +1,23 @@
 name: CI
 
+# Dos trabajos en paralelo en cada Pull Request (clase 13). Los dos son
+# obligatorios para mergear a main (Settings → Rulesets: `verificar` y `e2e`).
 on:
   pull_request:
   push:
     branches: [main]
 
 jobs:
+  # Tipos, lint y pruebas de dominio: sin base, red ni navegador. ~1 minuto.
   verificar:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22: con Node 20 falla el cliente de Supabase.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Instalar dependencias
@@ -28,5 +32,54 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Tests
+      - name: Pruebas unitarias
         run: npm test
+
+  # Flujo principal, permisos y concurrencia: la app compilada, un Postgres nuevo
+  # y un navegador de verdad. Nunca contra producción: la base es este servicio.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: careroute_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Chromium para Playwright
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts lee .env.e2e, compila la app, levanta el Auth local
+      # y antes de empezar corre `prisma migrate reset` (migraciones + seed).
+      - name: Pruebas e2e
+        run: npm run test:e2e
+
+      # Si algo falla: el reporte con el trace de cada prueba (npx playwright show-trace).
+      - name: Subir el reporte de Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-playwright
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

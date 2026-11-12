@@ -16,3 +16,10 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 *.patch 
+
+# pruebas e2e (clase 13)
+.next-e2e/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
