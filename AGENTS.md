@@ -17,7 +17,7 @@ un nivel de urgencia y un algoritmo de scoring ordena hospitales candidatos.
 cambiar de hospital de destino o cerrarse sin una acción explícita de un profesional. Si una
 tarea pide automatizar esa confirmación, no la implementes: dejá el paso manual y avisá en el PR.
 
-Stack: Next.js 16 (App Router) + TypeScript + Tailwind + Prisma + PostgreSQL en Supabase + Supabase Auth (Google) + Zod + Vitest. IA: OpenAI.
+Stack: Next.js 16 (App Router) + TypeScript + Tailwind + Prisma + PostgreSQL en Supabase + Supabase Auth (Google) + Zod + Vitest + Playwright. IA: OpenAI.
 
 ## 2. Reglas duras
 
@@ -89,6 +89,15 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
   Nada de "traer y después comparar en el handler".
 - No se borran filas de `SolicitudTraslado` ni de `RegistroBitacora`: el historial es parte
   de la trazabilidad. Rechazar es un cambio de estado.
+- Toda regla de "uno solo", "una sola vez" o "no más de N" la cumple **la base** (clase 14):
+  un `@@unique` o una condición dentro del `updateMany`, nunca un `if` que pregunta y después
+  guarda. El P2002 de Prisma se captura en `lib/db/` y sale como 409 con el mismo mensaje
+  que el caso de la regla: nunca como 500. Un `setTimeout` o un `if` más no arreglan una
+  carrera.
+- Regla 6 (una derivación abierta por paciente y centro): `pacienteDniActivo` lleva el DNI
+  mientras la solicitud está abierta y `null` cuando se cierra. Lo escribe solo
+  `lib/db/solicitudes.ts`. Una transición nueva a `RECHAZADA` o `FINALIZADA` lo pone en `null`
+  en el mismo `updateMany`.
 
 ### 2.5 Autorización
 
@@ -153,6 +162,12 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - Prohibido el CSS suelto: ni `.module.css` ni `style={...}` inline. Los colores, radios y
   tipografía son tokens de `app/globals.css`; se usan como clases (`bg-primary`,
   `text-muted-foreground`), nunca colores sueltos (`bg-blue-700`, `#fff`).
+- Los cuatro colores del triaje (`triaje-rojo`, `-naranja`, `-amarillo`, `-verde`) se usan
+  **solo** para el nivel de urgencia. Los estados de una solicitud usan la tinta petróleo
+  (`primary`) y el rojo de error (`destructive`). Qué color lleva cada nivel y cada estado
+  se decide en `components/estado-solicitud.tsx`, no en cada pantalla.
+- La tipografía es Atkinson Hyperlegible Next, en `app/fuentes/` (next/font/local): no se
+  agrega otra ni se pide a Google Fonts.
 - En `app/` no se escriben bordes ni radios a mano: se usan `Card`, `Button`, `Badge`, etc.
 - `components/ui/` son los componentes base de shadcn/ui, copiados al repo y propios. **No importan
   nada del dominio.** La traducción del dominio (qué badge lleva cada estado) vive en
@@ -163,7 +178,8 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
   (`SinDatos`, desde el servidor), sin resultados (el filtro, en el cliente) y error (`error.tsx`).
   Vacío y sin resultados tienen textos distintos. No hay try/catch por página.
 - `error.tsx` no muestra el mensaje de la excepción: lo registra con `console.error`.
-- Si se cambia un color, se recalcula la tabla de contraste de `docs/spec.md` §7.
+- Si se cambia un color, `npm run contraste` recalcula la tabla de `docs/spec.md` §7 (y falla
+  si algún par no llega al mínimo): se pega la tabla nueva en la spec.
 - Antes de instalar una dependencia nueva, preguntá. No agregues librerías por conveniencia.
 - No reformatees archivos que no tocaste ni hagas refactors masivos no pedidos.
 
@@ -214,15 +230,24 @@ lib/
   reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas puras (+ .test.ts)
 prisma/
   schema.prisma, migrations/, seed.ts
+e2e/                               pruebas de punta a punta (Playwright, §7)
+  flujo-principal.spec.ts          el flujo de la spec §5, de una persona a otra
+  permisos.spec.ts                 una prueba por fila de la columna "Rol" de docs/api.md
+  concurrencia.spec.ts             reglas de "uno solo" con pedidos simultáneos (clase 14)
+  entorno.ts, preparar.ts          .env.e2e, control de base local, migrate reset + seed
+  sesiones.ts, jwt.ts, auth-local.ts   sesiones de prueba sin Google (ADR 0009)
+  base.ts                          contar filas en la base local (solo lectura)
+scripts/                           contraste de colores, demos y carga de la clase 14
 docs/
-  spec.md, api.md, api.http, adr/
+  spec.md, api.md, api.http, adr/, rendimiento.md
 ```
 
 ## 5. Antes de abrir un Pull Request
 
 Checklist que el asistente debe verificar y el revisor va a controlar:
 
-- [ ] `npm run typecheck`, `npm run lint` y `npm test` en verde.
+- [ ] `npm run typecheck`, `npm run lint`, `npm test` y `npm run test:e2e` en verde.
+- [ ] Si cambió la spec o el contrato, cambió la prueba que lo cubre (§7).
 - [ ] Cada endpoint nuevo tiene su fila en `docs/api.md` (tabla, matriz y errores) y sus requests en `docs/api.http`.
 - [ ] Cero apariciones de `any`, `as any`, `@ts-ignore` en el diff.
 - [ ] Toda entrada externa nueva tiene su schema de Zod.
@@ -237,3 +262,69 @@ Checklist que el asistente debe verificar y el revisor va a controlar:
 - Un PR = un cambio con sentido propio. Si crece demasiado, partilo.
 - Si una instrucción de este archivo choca con lo que te pidieron en el prompt, **gana este
   archivo**. Avisá el conflicto en lugar de resolverlo por tu cuenta.
+
+## 7. Pruebas
+
+Una prueba no sirve el día que se escribe: sirve en los cambios siguientes, cuando avisa que
+se rompió algo que no se tocó. Las pruebas y el CI son **sensores**: miden el resultado. Este
+archivo es una guía.
+
+### Qué se prueba y dónde
+
+| Capa | Pregunta | Archivo | Herramienta |
+|---|---|---|---|
+| Dominio | ¿La regla calcula bien? | `lib/*.test.ts` | Vitest, sin base, red ni navegador |
+| Permisos | ¿El servidor rechaza cuando corresponde, aunque no se pase por la pantalla? | `e2e/permisos.spec.ts` | Playwright contra la API |
+| Flujo | ¿Se recorre el sistema completo, de una persona a otra? | `e2e/flujo-principal.spec.ts` | Playwright con navegador |
+| Concurrencia | ¿Una regla de "uno solo" aguanta pedidos simultáneos? | `e2e/concurrencia.spec.ts` | Playwright + conteo en la base |
+
+| Si cambia… | Se actualiza… |
+|---|---|
+| Una regla de negocio (spec §6) | Su prueba en `lib/*.test.ts` (y en `concurrencia.spec.ts` si es de "uno solo") |
+| Un permiso o un endpoint (`docs/api.md`) | Su caso en `e2e/permisos.spec.ts` |
+| El recorrido (spec §5) | `e2e/flujo-principal.spec.ts` |
+
+Las pruebas cambian cuando cambia la spec o el contrato, no cuando cambia el código: un
+refactor no rompe pruebas.
+
+**No se prueba:** clases de Tailwind, validaciones de Zod ni redirecciones de Next (ya las
+prueban sus librerías), casos de uso con una base simulada, ni cada pantalla por separado (el
+flujo ya las abre).
+
+### Cómo se escriben
+
+- El valor esperado sale de la spec o de `docs/api.md`, **nunca del código recién escrito**.
+  "El código dice lo que hace; el contrato dice lo que debería hacer."
+- Una prueba roja se arregla arreglando el código, no cambiando el valor esperado.
+- Toda prueba nueva se ve fallar al menos una vez (sacando el arreglo) antes de confiar en
+  ella. Se anota en el PR.
+- Se busca como una persona: `getByRole`, `getByLabel`, `getByText`. Nada de ids ni clases.
+- Sin `sleep` ni `waitForTimeout`: `expect(...).toBeVisible()` ya reintenta.
+- El flujo es una sola prueba larga con un `test.step` por paso de la spec §5 y al menos un
+  caso de error en el medio.
+- Los pedidos simultáneos van con `Promise.all`; con un `for` y un `await` adentro salen de a
+  uno y la carrera no aparece.
+
+### Lo que está prohibido
+
+- Correr las e2e contra producción. Van contra el Postgres local de `.env.e2e`;
+  `playwright.config.ts` y `e2e/preparar.ts` cortan si la base no es local.
+- Modo prueba, usuario mágico o `if (process.env.E2E)` en la app. La sesión de prueba es un
+  token firmado con `E2E_JWT_SECRET` (solo en `.env.e2e`) que valida `e2e/auth-local.ts`,
+  igual que Supabase Auth en producción (ADR 0009). La app no sabe que la están probando.
+- Reemplazar la base por una simulada en las e2e.
+- Escribir en la base desde una prueba: las pruebas escriben a través de la app y solo
+  **leen** la base (`e2e/base.ts`) para contar lo que la app no muestra.
+
+### Cómo se corren
+
+```bash
+npm test                              # unitarias
+npm run test:e2e                      # e2e (Docker con Postgres encendido; ver README)
+npm run test:e2e -- permisos          # un archivo
+npx playwright test --ui              # en vivo
+npx playwright show-trace <trace.zip> # pasos, red y consola de una falla
+```
+
+El CI corre las dos capas en cada PR (`verificar` y `e2e` en `.github/workflows/ci.yml`) y
+`main` no acepta un merge si alguna está en rojo.

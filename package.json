@@ -11,8 +11,11 @@
     "test": "vitest run --passWithNoTests",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
+    "test:e2e": "playwright test",
     "contraste": "tsx scripts/contraste.ts",
-    "test:e2e": "playwright test"
+    "demo:carrera": "tsx scripts/demo-carrera.ts",
+    "db:carga": "tsx scripts/carga.ts",
+    "demo:indices": "tsx scripts/demo-indices.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

@@ -134,9 +134,10 @@ sesión, nunca del body, de un header ni de la query.
 | Base de datos | PostgreSQL en Supabase (São Paulo · `sa-east-1`), con RLS activado |
 | Auth | Supabase Auth con Google |
 | IA | OpenAI `gpt-4o-mini` — `lib/servicios/openai.ts` |
-| Tests | Vitest |
+| Tests | Vitest (reglas de dominio) y Playwright (flujo, permisos y concurrencia) |
+| Tipografía | Atkinson Hyperlegible Next, servida desde el repo (`app/fuentes/`, licencia OFL) |
 | Deploy | Vercel |
-| CI | GitHub Actions: typecheck, lint y tests en cada Pull Request |
+| CI | GitHub Actions: `verificar` (tipos, lint, unitarias) y `e2e` (Playwright con Postgres) en cada Pull Request |
 
 ### Estructura
 
@@ -159,6 +160,8 @@ lib/
   schemas/             schemas de Zod
   servicios/           servicios externos (OpenAI)
   reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas de negocio puras + tests
+e2e/                   pruebas de punta a punta (Playwright): flujo, permisos, concurrencia
+scripts/               contraste de colores, carga de datos y demos de la clase 14
 prisma/
   schema.prisma        modelo de dominio
   migrations/          migraciones versionadas
@@ -172,7 +175,7 @@ docs/
 
 ## 8. Cómo levantarlo
 
-Requisitos: Node.js 20 o superior y npm.
+Requisitos: Node.js 22 o superior y npm (con Node 20 falla el cliente de Supabase).
 
 ```bash
 git clone https://github.com/MateoDip/CareRoute.git
@@ -190,8 +193,12 @@ npm run dev                 # http://localhost:3000
 | `npm run build` | `prisma generate` + build de producción |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest |
+| `npm test` | Pruebas unitarias (Vitest) |
+| `npm run test:e2e` | Pruebas de punta a punta (Playwright). Ver [Pruebas](#pruebas) |
 | `npm run db:seed` | Carga el seed (idempotente: reinicia los datos de prueba) |
+| `npm run contraste` | Contraste de los colores de `app/globals.css` (tabla de la spec §7) |
+| `npm run demo:carrera` | Diez pedidos simultáneos para el mismo paciente (clase 14) |
+| `npm run db:carga`, `npm run demo:indices` | 50.000 solicitudes en la base de pruebas y EXPLAIN ANALYZE con y sin índices (clase 14) |
 
 ### Variables de entorno
 
@@ -209,17 +216,54 @@ Variables.
 | `OPENAI_BASE_URL` | Opcional. Solo para probar el timeout (ver `docs/api.http`, clase 7) |
 | `SEED_EMAIL_ADMIN`, `SEED_EMAIL_DERIVANTE`, `SEED_EMAIL_RECEPTOR` | Solo local. Cuentas de Google reales a las que el seed les da cada rol, para poder entrar como ese rol |
 
+### Pruebas
+
+Tres capas (clase 13). Qué se prueba y por qué, en [AGENTS.md §7](./AGENTS.md#7-pruebas).
+
+| Capa | Pregunta | Dónde | Cómo |
+|---|---|---|---|
+| Dominio | ¿La regla calcula bien? | `lib/*.test.ts` | `npm test` (Vitest, sin base ni red) |
+| Permisos | ¿El servidor rechaza cuando corresponde? | `e2e/permisos.spec.ts` | `npm run test:e2e -- permisos` |
+| Flujo | ¿Se recorre el sistema completo, de una persona a otra? | `e2e/flujo-principal.spec.ts` | `npm run test:e2e -- flujo` |
+| Concurrencia | ¿La regla de "uno solo" aguanta pedidos simultáneos? | `e2e/concurrencia.spec.ts` | `npm run test:e2e -- concurrencia` |
+
+Las e2e corren **siempre contra un Postgres local**, nunca contra Supabase:
+`playwright.config.ts` lee `.env.e2e` y se niega a arrancar si la base no es local.
+No hace falta Google ni `.env.local`: la sesión de cada usuario de prueba la fabrica
+`e2e/sesiones.ts` con un secreto que solo existe en `.env.e2e` (ADR 0009).
+
+```bash
+# Una vez: Postgres en Docker y el navegador de Playwright
+docker run --name careroute-e2e -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=careroute_e2e -p 5432:5432 -d postgres:16
+npx playwright install chromium
+
+# Cada vez (con Docker encendido: `docker start careroute-e2e`)
+npm run test:e2e                     # todas: borra la base, migra, siembra y corre
+npm run test:e2e -- concurrencia     # un solo archivo
+npx playwright test --ui             # verlas en vivo
+npx playwright show-report           # el reporte de la última corrida
+npx playwright show-trace test-results/<prueba>/trace.zip   # pasos, red y consola de una falla
+```
+
+La primera corrida compila la app en `.next-e2e/` (un par de minutos). Si ya tenés la
+app de pruebas levantada en el puerto 3100, Playwright la reutiliza.
+
 ## 9. Flujo de trabajo con Git
 
 - `main` está protegida: no se aceptan push directos ni force push.
 - Todo cambio entra por Pull Request con **al menos una aprobación de otra persona**.
 - La regla activa es *require approval of the most recent reviewable push*: quien pushea
   último no puede aprobar ese PR.
-- El CI tiene que pasar en verde antes de mergear.
+- El CI tiene que pasar en verde antes de mergear: `verificar` **y** `e2e` son checks
+  obligatorios del ruleset de `main` (Settings → Rules → Rulesets → *Require status checks
+  to pass*).
 - Si tocás dependencias, `package.json` y `package-lock.json` van en el mismo commit.
 - Ramas: `feat/…`, `fix/…`, `docs/…`. Commits en formato Conventional Commits.
 - Migraciones: las genera y aplica **una sola persona**; el resto hace `git pull` y
-  `npx prisma generate`. Una migración aplicada no se edita nunca.
+  `npx prisma generate`. Una migración aplicada no se edita nunca. Vercel **no** aplica
+  migraciones: después del merge, `npx prisma migrate deploy` con las variables de
+  producción.
 
 Si vas a usar asistentes de IA para escribir código, leé primero [AGENTS.md](./AGENTS.md).
 

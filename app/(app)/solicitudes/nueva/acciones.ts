@@ -34,7 +34,17 @@ export async function iniciarSolicitudAction(
   if (!datos.success) return estadoDeValidacion(datos.error, formData);
 
   const resultado = await iniciarSolicitud(usuario, datos.data);
-  if (!resultado.ok) return estadoDeRechazo(resultado, formData);
+  if (!resultado.ok) {
+    // Regla 6: el paciente ya tiene una derivación abierta. Se lo lleva a esa.
+    const abierta = resultado.datos?.solicitudAbiertaId;
+    return {
+      ...estadoDeRechazo(resultado, formData),
+      enlace:
+        typeof abierta === "string"
+          ? { href: `/solicitudes/${abierta}`, texto: "Ver la derivación abierta" }
+          : undefined,
+    };
+  }
 
   const id = resultado.valor.id;
   revalidatePath(`/solicitudes/${id}`);

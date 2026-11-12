@@ -20,6 +20,7 @@ export type MotivoDeRechazo =
   | "DESTINO_IGUAL_A_ORIGEN"
   | "CAPACIDAD_AGOTADA"
   | "CAMBIO_CONCURRENTE"
+  | "DERIVACION_ABIERTA"
   | "IA_NO_DISPONIBLE";
 
 /**
