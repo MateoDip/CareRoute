@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  * Vive acá y no en components/ui/, que no conoce el dominio (clase 10).
  *
  * Los cuatro colores del triaje (rojo, naranja, amarillo, verde) son solo para
- * el nivel de urgencia. Los estados usan la tinta petróleo y el rojo de error:
+ * el nivel de urgencia. Los estados usan el turquesa (primary) y el rojo de error:
  * así "Nivel bajo" y "Aprobada" nunca se ven del mismo color. El texto va
  * siempre: el color nunca es el único dato.
  */

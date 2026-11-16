@@ -163,7 +163,7 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
   tipografía son tokens de `app/globals.css`; se usan como clases (`bg-primary`,
   `text-muted-foreground`), nunca colores sueltos (`bg-blue-700`, `#fff`).
 - Los cuatro colores del triaje (`triaje-rojo`, `-naranja`, `-amarillo`, `-verde`) se usan
-  **solo** para el nivel de urgencia. Los estados de una solicitud usan la tinta petróleo
+  **solo** para el nivel de urgencia. Los estados de una solicitud usan el turquesa
   (`primary`) y el rojo de error (`destructive`). Qué color lleva cada nivel y cada estado
   se decide en `components/estado-solicitud.tsx`, no en cada pantalla.
 - La tipografía es Atkinson Hyperlegible Next, en `app/fuentes/` (next/font/local): no se

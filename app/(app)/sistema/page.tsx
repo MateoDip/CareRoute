@@ -8,6 +8,7 @@ import {
   FiltroSolicitudes,
   type SolicitudEnLista,
 } from "@/components/filtro-solicitudes";
+import { Cargando } from "@/components/cargando";
 import { FranjaTriaje, Marca } from "@/components/marca";
 import { SinDatos } from "@/components/sin-datos";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -104,7 +105,14 @@ export default async function Sistema() {
       </Seccion>
 
       <Seccion titulo="Marca y colores del triaje">
-        <Marca />
+        <div className="flex flex-wrap items-center gap-6">
+          <Marca />
+          <Marca grande />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          El logo usa los colores de la presentación (tokens marca-*). El coral va solo dentro
+          del logo: en cualquier otro lugar se leería como un nivel de urgencia.
+        </p>
         <p className="text-sm text-muted-foreground">
           Los cuatro colores del triaje se usan solo para el nivel de urgencia.
         </p>
@@ -208,7 +216,9 @@ export default async function Sistema() {
         </Alert>
       </Seccion>
 
-      <Seccion titulo="Cargando (esqueleto)">
+      <Seccion titulo="Cargando (aviso y esqueleto)">
+        <Cargando />
+        <Cargando texto="Buscando centros con cama…" />
         <Skeleton className="h-8 w-64 max-w-full" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />

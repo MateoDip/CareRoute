@@ -31,17 +31,6 @@ function Icono({ className, children, ...props }: PropsIcono) {
   );
 }
 
-/** Marca de CareRoute: la cruz médica con el brazo derecho convertido en ruta. */
-export function IconoMarca(props: PropsIcono) {
-  return (
-    <Icono strokeWidth={2.4} {...props}>
-      <path d="M9 3h4v6h6" />
-      <path d="M9 3v6H3v4h6v6h4v-6h3" />
-      <path d="m18 10 3 3-3 3" />
-    </Icono>
-  );
-}
-
 /** Llega al centro: flecha hacia adentro de la bandeja. */
 export function IconoEntrante(props: PropsIcono) {
   return (

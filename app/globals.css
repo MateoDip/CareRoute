@@ -5,10 +5,15 @@
  * los componentes usan estas variables (bg-primary, text-muted-foreground…),
  * nunca colores sueltos. Prohibido el CSS suelto: ni .module.css ni style inline.
  *
- * Dirección visual: la de una guardia. Fondo gris frío de pared de hospital,
- * tinta azul petróleo para todo lo que se opera, y los colores del triaje
+ * Dirección visual: la de la presentación de CareRoute. Azul noche y blanco
+ * hielo de fondo, turquesa para todo lo que se opera, y los colores del triaje
  * (rojo, naranja, amarillo, verde) reservados para una sola cosa: el nivel de
  * urgencia. Ningún otro elemento usa esos cuatro colores, así no se confunden.
+ *
+ * Los tokens `marca-*` son los colores de la presentación tal cual, iguales en
+ * los dos temas, y se usan solo en el logo y en el panel de la marca (login).
+ * El coral (`marca-acento`) va solo dentro del logo: fuera de él se leería
+ * como un nivel de urgencia.
  *
  * Cada par texto/fondo está verificado en ≥ 4,5:1, y bordes, foco y franjas en
  * ≥ 3:1, en los dos temas: `npm run contraste` imprime la tabla de docs/spec.md §7
@@ -20,24 +25,24 @@
 :root {
   --radius: 0.625rem;
 
-  --background: #f2f5f7;
-  --foreground: #0e1c26;
+  --background: #eef3f5;
+  --foreground: #0b1622;
   --card: #ffffff;
-  --card-foreground: #0e1c26;
-  --primary: #0b5b70;
+  --card-foreground: #0b1622;
+  --primary: #0b6a64;
   --primary-foreground: #ffffff;
-  --secondary: #e4ecf0;
-  --secondary-foreground: #0e1c26;
-  --muted: #e9eef1;
-  --muted-foreground: #4a5a66;
-  --accent: #e1eff3;
-  --accent-foreground: #0e1c26;
+  --secondary: #e2ecef;
+  --secondary-foreground: #0b1622;
+  --muted: #e6eef1;
+  --muted-foreground: #495b66;
+  --accent: #e0f2ef;
+  --accent-foreground: #0b1622;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --destructive-suave: #fdeceb;
-  --border: #d5dee3;
-  --input: #6b7a85;
-  --ring: #0b5b70;
+  --border: #d3dfe3;
+  --input: #6b7c86;
+  --ring: #0b6a64;
 
   /* Triaje: franja (gráfico), fondo suave y texto de cada nivel. */
   --triaje-rojo: #c4271b;
@@ -52,28 +57,34 @@
   --triaje-verde: #2f8a46;
   --triaje-verde-suave: #e5f4e8;
   --triaje-verde-texto: #1c5a2c;
+
+  /* Marca: los colores de la presentación, iguales en los dos temas. */
+  --marca-fondo: #0b1622;
+  --marca-texto: #e8f1f5;
+  --marca-principal: #2ec4b6;
+  --marca-acento: #ff6b4a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b151c;
-    --foreground: #e8eef2;
-    --card: #12202a;
-    --card-foreground: #e8eef2;
-    --primary: #6cc9dd;
-    --primary-foreground: #04222b;
-    --secondary: #1d2e39;
-    --secondary-foreground: #e8eef2;
-    --muted: #1d2e39;
-    --muted-foreground: #a3b4bf;
-    --accent: #173543;
-    --accent-foreground: #e8eef2;
+    --background: #0b1622;
+    --foreground: #e8f1f5;
+    --card: #11232f;
+    --card-foreground: #e8f1f5;
+    --primary: #2ec4b6;
+    --primary-foreground: #0b1622;
+    --secondary: #1a2d3a;
+    --secondary-foreground: #e8f1f5;
+    --muted: #1a2d3a;
+    --muted-foreground: #a3b6c0;
+    --accent: #123a3d;
+    --accent-foreground: #e8f1f5;
     --destructive: #f4877b;
     --destructive-foreground: #2a0703;
     --destructive-suave: #3a1714;
-    --border: #283a45;
-    --input: #7f909b;
-    --ring: #6cc9dd;
+    --border: #243847;
+    --input: #7f929c;
+    --ring: #2ec4b6;
 
     --triaje-rojo: #f0645a;
     --triaje-rojo-suave: #3a1714;
@@ -87,6 +98,12 @@
     --triaje-verde: #5cc077;
     --triaje-verde-suave: #13301c;
     --triaje-verde-texto: #a3e1b2;
+
+    /* Marca: los colores de la presentación, iguales en los dos temas. */
+    --marca-fondo: #0b1622;
+    --marca-texto: #e8f1f5;
+    --marca-principal: #2ec4b6;
+    --marca-acento: #ff6b4a;
   }
 }
 
@@ -124,6 +141,11 @@
   --color-triaje-verde: var(--triaje-verde);
   --color-triaje-verde-suave: var(--triaje-verde-suave);
   --color-triaje-verde-texto: var(--triaje-verde-texto);
+
+  --color-marca-fondo: var(--marca-fondo);
+  --color-marca-texto: var(--marca-texto);
+  --color-marca-principal: var(--marca-principal);
+  --color-marca-acento: var(--marca-acento);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
