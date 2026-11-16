@@ -110,8 +110,9 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
 - Orden: sesión (401) → rol / centro (403) → body (400) → caso de uso de `lib/casos/`:
   pertenencia (404) → regla (409, o 403 de regla) → servicio externo (502) → escribir.
 - En las páginas y Server Actions, la primera línea es `requerirMedicoEnPagina(rol?)`: la misma
-  autorización que los handlers, traducida a navegación (sin sesión → `/ingresar`; sin centro o
-  sin rol clínico → `/sin-acceso`; otro rol que el pedido → 404). La pertenencia va en la consulta
+  autorización que los handlers, traducida a navegación (sin sesión → `/ingresar`; sin centro →
+  `/sin-acceso`; ADMIN → `/admin`; otro rol que el pedido → 404). En el panel del admin es
+  `requerirAdminEnPagina()` (sin sesión → `/ingresar`; un médico → 404). La pertenencia va en la consulta
   de `lib/db/` y, si devuelve null, `notFound()`: "no existe" y "no es de tu centro" se ven igual.
 
 ### 2.5.1 Casos de uso (clase 12)
@@ -200,6 +201,10 @@ app/
     solicitudes/[id]/triaje/       triaje con la IA o nivel a mano (HU02)
     solicitudes/[id]/destino/      ranking y elección del destino (HU03, HU04)
     sistema/page.tsx               galería del sistema visual
+  (admin)/admin/                   panel del ADMIN (requerirAdminEnPagina; un médico ve 404)
+    page.tsx                       resumen: quién espera centro, totales y camas libres
+    usuarios/, usuarios/[id]/      listado y asignar rol y centro (regla 4)
+    centros/, centros/nuevo/, centros/[id]/   alta, edición y baja de centros (regla 5)
   (public)/                        sin sesión requerida; layout solo con encabezado
     ingresar/page.tsx              login con Google
     sin-acceso/page.tsx            cuenta sin centro o sin rol clínico
@@ -233,6 +238,7 @@ prisma/
   schema.prisma, migrations/, seed.ts
 e2e/                               pruebas de punta a punta (Playwright, §7)
   flujo-principal.spec.ts          el flujo de la spec §5, de una persona a otra
+  administracion.spec.ts           el panel del admin: asignar centro y CRUD de centros
   permisos.spec.ts                 una prueba por fila de la columna "Rol" de docs/api.md
   concurrencia.spec.ts             reglas de "uno solo" con pedidos simultáneos (clase 14)
   entorno.ts, preparar.ts          .env.e2e, control de base local, migrate reset + seed

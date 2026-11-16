@@ -148,6 +148,7 @@ const NOMBRE: Record<Quien, string> = {
   receptor: "la receptora del Centenario",
   admin: "el admin",
   sinCentro: "un médico sin centro",
+  nuevo: "una médica nueva",
 };
 
 for (const [fila, casos] of Object.entries(CONTRATO)) {
@@ -203,6 +204,33 @@ test.describe("Pantallas — misma autorización que la API", () => {
     await pagina.goto("/solicitudes/nueva");
     await expect(pagina.getByRole("heading", { name: "No encontramos esa solicitud" })).toBeVisible();
     await expect(pagina.getByLabel("DNI del paciente")).toHaveCount(0);
+    await contexto.close();
+  });
+
+  test("el panel de administración no existe para un médico: 404", async ({ browser }) => {
+    const contexto = await browser.newContext({ storageState: sesionDe("derivante") });
+    const pagina = await contexto.newPage();
+    for (const ruta of ["/admin", "/admin/usuarios", "/admin/centros/centro-destino-1"]) {
+      await pagina.goto(ruta);
+      await expect(pagina.getByRole("heading", { name: "No encontramos esta página" })).toBeVisible();
+      await expect(pagina.getByRole("navigation", { name: "Administración" })).toHaveCount(0);
+    }
+    await contexto.close();
+  });
+
+  test("sin sesión, el panel de administración manda a /ingresar", async ({ page }) => {
+    await page.goto("/admin/usuarios");
+    await expect(page).toHaveURL(/\/ingresar$/);
+  });
+
+  test("el admin no ve las pantallas clínicas: lo lleva a su panel", async ({ browser }) => {
+    const contexto = await browser.newContext({ storageState: sesionDe("admin") });
+    const pagina = await contexto.newPage();
+    for (const ruta of ["/", "/solicitudes/solicitud-ok-1"]) {
+      await pagina.goto(ruta);
+      await expect(pagina).toHaveURL(/\/admin$/);
+      await expect(pagina.getByText("99.000")).toHaveCount(0);
+    }
     await contexto.close();
   });
 

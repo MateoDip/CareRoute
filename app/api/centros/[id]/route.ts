@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { requerirUsuario } from "@/lib/auth";
-import {
-  actualizarCentro,
-  contarDependenciasDelCentro,
-  eliminarCentro,
-  obtenerCentro,
-} from "@/lib/db/centros";
+import { editarCentro } from "@/lib/casos/editar-centro";
+import { eliminarCentro } from "@/lib/casos/eliminar-centro";
+import { obtenerCentro } from "@/lib/db/centros";
 import { responderError } from "@/lib/errores";
-import { conflicto, errorValidacion, noEncontrado } from "@/lib/http";
-import { impedimentoParaEliminarCentro } from "@/lib/reglas-admin";
+import { errorValidacion, noEncontrado, responderRechazo } from "@/lib/http";
 import { actualizarCentroSchema } from "@/lib/schemas/centro-salud";
 
 type Contexto = { params: Promise<{ id: string }> };
@@ -43,10 +39,10 @@ export async function PATCH(request: Request, { params }: Contexto) {
     const datos = actualizarCentroSchema.safeParse(body);
     if (!datos.success) return errorValidacion(datos.error);
 
-    const centro = await actualizarCentro(id, datos.data);
-    if (!centro) return noEncontrado("El centro de salud no existe");
+    const resultado = await editarCentro(id, datos.data);
+    if (!resultado.ok) return responderRechazo(resultado);
 
-    return NextResponse.json(centro, { status: 200 });
+    return NextResponse.json(resultado.valor, { status: 200 });
   } catch (error) {
     return responderError("PATCH /api/centros/:id", error);
   }
@@ -64,24 +60,10 @@ export async function DELETE(_request: Request, { params }: Contexto) {
     await requerirUsuario("ADMIN");
     const { id } = await params;
 
-    const dependencias = await contarDependenciasDelCentro(id);
-    if (!dependencias) return noEncontrado("El centro de salud no existe");
-
-    const impedimento = impedimentoParaEliminarCentro(dependencias);
-    if (impedimento) {
-      return conflicto(
-        "No se puede dar de baja un centro con usuarios o derivaciones. Reasigná a sus usuarios primero; el historial de derivaciones no se borra.",
-        { dependencias: impedimento },
-      );
-    }
-
-    // false: le vincularon algo entre el conteo y el borrado (la base lo frenó).
-    const eliminado = await eliminarCentro(id);
-    if (!eliminado) {
-      return conflicto(
-        "El centro cambió mientras se procesaba: ahora tiene usuarios o derivaciones",
-      );
-    }
+    // Inexistente (404) o con usuarios o derivaciones (409 con las cantidades):
+    // lib/casos/eliminar-centro.ts, que también usa la pantalla /admin/centros/:id.
+    const resultado = await eliminarCentro(id);
+    if (!resultado.ok) return responderRechazo(resultado);
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

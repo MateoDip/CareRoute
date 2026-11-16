@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requerirUsuario } from "@/lib/auth";
-import { crearCentro, listarCentros } from "@/lib/db/centros";
+import { crearCentro } from "@/lib/casos/crear-centro";
+import { listarCentros } from "@/lib/db/centros";
 import { responderError } from "@/lib/errores";
-import { errorValidacion } from "@/lib/http";
+import { errorValidacion, responderRechazo } from "@/lib/http";
 import { crearCentroSchema } from "@/lib/schemas/centro-salud";
 
 /**
@@ -28,8 +29,9 @@ export async function POST(request: Request) {
     const datos = crearCentroSchema.safeParse(body);
     if (!datos.success) return errorValidacion(datos.error);
 
-    const centro = await crearCentro(datos.data);
-    return NextResponse.json(centro, { status: 201 });
+    const resultado = await crearCentro(datos.data);
+    if (!resultado.ok) return responderRechazo(resultado);
+    return NextResponse.json(resultado.valor, { status: 201 });
   } catch (error) {
     return responderError("POST /api/centros", error);
   }

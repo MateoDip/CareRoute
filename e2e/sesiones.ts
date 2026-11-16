@@ -40,6 +40,15 @@ export const USUARIOS = {
     email: "recien-llegado@careroute.test",
     nombre: "Recién llegado",
   },
+  /**
+   * Tampoco está en el seed. Lo usa e2e/administracion.spec.ts: entra, queda
+   * sin centro y el admin se lo asigna. Es otro que `sinCentro` para no cambiar
+   * lo que esperan las pruebas de permisos.
+   */
+  nuevo: {
+    email: "medica-nueva@careroute.test",
+    nombre: "Dra. Nueva (sin centro todavía)",
+  },
 } as const;
 
 export type UsuarioDePrueba = keyof typeof USUARIOS;

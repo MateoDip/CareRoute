@@ -1,4 +1,4 @@
-import { Prisma, type RolUsuario } from "@prisma/client";
+import { Prisma, type RolUsuario, type TipoUnidad } from "@prisma/client";
 import type { DependenciasCentro } from "@/lib/reglas-admin";
 import type { UnidadDisponible } from "@/lib/disponibilidad";
 import { prisma } from "@/lib/prisma";
@@ -213,4 +213,24 @@ export async function listarCentrosConUnidades(): Promise<CentroConUnidades[]> {
     unidades: centro.unidadesCuidados,
     recursosOperativos: centro.recursosEspecializados.length,
   }));
+}
+
+/**
+ * Camas libres de toda la red, por tipo de unidad, para el resumen del ADMIN.
+ * La suma la hace la base (groupBy), no JavaScript sobre todas las filas.
+ */
+export async function camasLibresPorTipo(): Promise<Record<TipoUnidad, number>> {
+  const filas = await prisma.unidadCuidados.groupBy({
+    by: ["tipo"],
+    _sum: { camasDisponibles: true },
+  });
+
+  const totales: Record<TipoUnidad, number> = { UTI: 0, UCO: 0, SALA_COMUN: 0, GUARDIA: 0 };
+  for (const fila of filas) totales[fila.tipo] = fila._sum.camasDisponibles ?? 0;
+  return totales;
+}
+
+/** Cuántos centros hay, para el resumen del ADMIN. */
+export async function contarCentros(): Promise<number> {
+  return prisma.centroSalud.count();
 }
