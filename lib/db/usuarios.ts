@@ -53,3 +53,29 @@ export async function actualizarUsuario(
     select: camposUsuario,
   });
 }
+
+/**
+ * Para el resumen del panel del ADMIN: quiénes entraron con Google y todavía no
+ * pueden operar (médicos sin centro, regla 4), los más recientes primero, y los
+ * totales por rol. Sin datos clínicos: el admin no los ve (docs/api.md).
+ */
+export async function resumenDeUsuarios() {
+  const [sinCentro, porRol] = await Promise.all([
+    prisma.usuario.findMany({
+      where: { centroSaludId: null, rol: { not: "ADMIN" } },
+      select: camposUsuario,
+      orderBy: { creadaEn: "desc" },
+      take: LIMITE_LISTADO,
+    }),
+    prisma.usuario.groupBy({ by: ["rol"], _count: { _all: true } }),
+  ]);
+
+  const totales: Record<RolUsuario, number> = {
+    ADMIN: 0,
+    MEDICO_DERIVANTE: 0,
+    MEDICO_RECEPTOR: 0,
+  };
+  for (const fila of porRol) totales[fila.rol] = fila._count._all;
+
+  return { sinCentro, totales };
+}

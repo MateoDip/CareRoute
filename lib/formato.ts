@@ -2,8 +2,10 @@ import type {
   EstadoSolicitud,
   EstadoTripulacion,
   EventoBitacora,
+  NivelComplejidad,
   NivelUrgencia,
   RolUsuario,
+  TipoUnidad,
 } from "@prisma/client";
 
 /**
@@ -87,4 +89,18 @@ export const ETIQUETA_EVENTO: Record<EventoBitacora, string> = {
   PACIENTE_A_BORDO: "Paciente a bordo",
   LLEGADA_DESTINO: "Llegó al centro de destino",
   COMPLICACION_CLINICA: "Complicación clínica",
+};
+
+export const ETIQUETA_COMPLEJIDAD: Record<NivelComplejidad, string> = {
+  BAJA: "Baja",
+  MEDIA: "Media",
+  ALTA: "Alta",
+  CRITICA: "Crítica",
+};
+
+export const ETIQUETA_UNIDAD: Record<TipoUnidad, string> = {
+  UTI: "UTI",
+  UCO: "UCO",
+  SALA_COMUN: "Sala común",
+  GUARDIA: "Guardia",
 };

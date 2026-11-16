@@ -124,7 +124,8 @@ export async function requerirUsuarioConCentro(
  * vez de a un status HTTP:
  *
  *  - sin sesión (la API respondería 401)             → /ingresar
- *  - sin centro o sin rol clínico (la API, 403)       → /sin-acceso
+ *  - médico sin centro (la API, 403)                  → /sin-acceso
+ *  - ADMIN (rol no clínico; la API, 403)              → /admin, su panel
  *  - médico, pero no del rol que pide la pantalla     → 404 (notFound)
  *
  * Con `rol`, es la primera línea de cada Server Action y de cada pantalla que
@@ -147,11 +148,34 @@ export async function requerirMedicoEnPagina(rol?: Rol): Promise<UsuarioConCentr
     usuario = await usuarioClinicoDelRequest();
   } catch (error) {
     if (error instanceof NoAutenticado) redirect("/ingresar");
-    if (error instanceof SinCentroAsignado || error instanceof NoAutorizado) {
-      redirect("/sin-acceso");
-    }
+    if (error instanceof SinCentroAsignado) redirect("/sin-acceso");
+    // El único rol no clínico es ADMIN: su lugar es el panel, no /sin-acceso.
+    if (error instanceof NoAutorizado) redirect("/admin");
     throw error;
   }
   if (rol && usuario.rol !== rol) notFound();
   return usuario;
+}
+
+/**
+ * Para las pantallas y Server Actions del panel de administración (/admin): la
+ * misma autorización que los endpoints del ADMIN — `requerirUsuario("ADMIN")` —,
+ * traducida a navegación:
+ *
+ *  - sin sesión (la API respondería 401)   → /ingresar
+ *  - médico u otro rol (la API, 403)        → 404: el panel no existe para él
+ *
+ * Es la primera línea de cada pantalla y cada Server Action de /admin. El admin
+ * no necesita centro: configura el sistema, no deriva.
+ */
+const adminDelRequest = cache(() => requerirUsuario("ADMIN"));
+
+export async function requerirAdminEnPagina(): Promise<UsuarioSesion> {
+  try {
+    return await adminDelRequest();
+  } catch (error) {
+    if (error instanceof NoAutenticado) redirect("/ingresar");
+    if (error instanceof NoAutorizado) notFound();
+    throw error;
+  }
 }

@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 
 /**
  * /sin-acceso — hay sesión, pero la cuenta todavía no puede operar (regla 4 de
- * la spec): entró con Google y un admin aún no le asignó centro, o su rol no es
- * clínico. No es un 404: el problema no es la URL sino la cuenta.
+ * la spec): entró con Google y un admin aún no le asignó centro. (El ADMIN no
+ * llega acá: va a su panel, /admin.) No es un 404: el problema no es la URL sino
+ * la cuenta.
  *
  * Está en (public) porque el layout de (app) exige un médico con centro.
  */

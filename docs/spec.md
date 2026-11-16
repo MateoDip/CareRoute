@@ -138,7 +138,7 @@ Una pantalla de otro rol responde 404, como una solicitud de otro centro.
 | Paso | Pantalla | Dirección | Quién puede abrirla |
 |---|---|---|---|
 | — | Ingresar con Google | `/ingresar` | Cualquiera (pública) |
-| — | Cuenta sin centro o sin rol clínico (regla 4) | `/sin-acceso` | Con sesión, sin poder operar |
+| — | Cuenta sin centro (regla 4) | `/sin-acceso` | Médico con sesión, sin centro asignado |
 | 1. Crear la solicitud (HU01) | Formulario con el DNI | `/solicitudes/nueva` | Médico derivante |
 | 2. Signos vitales y sugerencia de IA (HU02) | Formulario de triaje; si la IA no responde, el médico elige el nivel | `/solicitudes/:id/triaje` | Médico derivante del origen, con la solicitud `PENDIENTE` |
 | 3. Ranking de centros (HU03) | Lista de centros con cama del tipo requerido, por puntaje | `/solicitudes/:id/destino` | Médico derivante del origen, con la solicitud `EVALUANDO` |
@@ -151,9 +151,22 @@ Una pantalla de otro rol responde 404, como una solicitud de otro centro.
 | — | Listado de solicitudes del centro, con filtro por estado | `/` | Médico con centro |
 | — | Galería del sistema visual | `/sistema` | Médico con centro |
 
+**Panel de administración.** El admin no participa del flujo clínico: al entrar a la app va a
+`/admin`, y para un médico esas pantallas no existen (404). No muestra solicitudes ni datos de
+pacientes (matriz de `docs/api.md`). Usa los mismos casos de uso que los endpoints del admin.
+
+| Tarea | Pantalla | Dirección | Quién puede abrirla |
+|---|---|---|---|
+| Ver quién espera centro (regla 4), los totales y las camas libres de la red | Resumen | `/admin` | Admin |
+| Ver los usuarios con su rol y centro | Listado de usuarios | `/admin/usuarios` | Admin |
+| Asignar rol y centro (regla 4: nadie se asigna un rol a sí mismo) | Formulario con dos selectores | `/admin/usuarios/:id` | Admin |
+| Ver los centros con sus camas libres | Listado de centros | `/admin/centros` | Admin |
+| Dar de alta un centro | Formulario | `/admin/centros/nuevo` | Admin |
+| Editar un centro o darlo de baja (regla 5) | Formulario y botón con confirmación | `/admin/centros/:id` | Admin |
+
 Sin pantalla todavía: asignar tripulación y registrar en la bitácora los eventos que no son la
 salida ni la llegada (por ejemplo, una complicación clínica), y actualizar la disponibilidad de
-camas (HU05), que está en la API.
+camas (HU05, del receptor o del admin), que está en la API.
 
 ## 6. Reglas de negocio
 

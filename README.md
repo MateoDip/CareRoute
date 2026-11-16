@@ -39,7 +39,7 @@ trazabilidad del paciente durante el traslado.
 |---|---|
 | **Médico derivante** | Crea la solicitud, registra el triaje (con sugerencia de IA), ve el ranking y elige el hospital de destino. |
 | **Médico receptor** | Actualiza las camas de su centro, ve las derivaciones que le propusieron y las aprueba o rechaza. |
-| **Admin** | Da de alta, edita y da de baja centros, y asigna rol y centro a cada usuario. No participa del flujo clínico. |
+| **Admin** | Desde su panel (`/admin`): da de alta, edita y da de baja centros, y asigna rol y centro a cada usuario. No participa del flujo clínico ni ve datos de pacientes. |
 
 Quien entra por primera vez con Google queda como médico derivante **sin centro**: no puede
 operar hasta que un admin le asigne centro (y rol, si corresponde). Nadie se asigna un rol a
