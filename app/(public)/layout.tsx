@@ -7,7 +7,8 @@ import { FranjaTriaje, Marca } from "@/components/marca";
  * Desde lg: dos columnas. A la izquierda, sobre el azul noche de la marca (el de
  * la presentación de CareRoute), qué es CareRoute; a la derecha, el contenido de
  * la pantalla. En el teléfono queda solo la marca arriba y el contenido: el
- * médico vino a entrar, no a leer.
+ * médico vino a entrar, no a leer. En tema oscuro el lado derecho va un tono
+ * más claro (card) para que el panel de la marca se distinga.
  */
 export default function LayoutPublico({ children }: { children: React.ReactNode }) {
   return (
@@ -29,7 +30,7 @@ export default function LayoutPublico({ children }: { children: React.ReactNode 
         <FranjaTriaje className="max-w-xs" />
       </aside>
 
-      <div className="flex flex-col">
+      <div className="flex flex-col dark:bg-card">
         <header className="mx-auto w-full max-w-md px-6 pt-8 lg:hidden">
           <Marca />
         </header>

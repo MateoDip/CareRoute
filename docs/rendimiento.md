@@ -49,3 +49,19 @@ EXPLAIN ANALYZE SELECT * FROM "SolicitudTraslado" WHERE "centroDestinoId" = 'cen
 
 Medir dos o tres veces: la primera suele ser más lenta. En producción, la señal es *Query
 Performance* de Supabase y los logs de Vercel: el tiempo sube aunque el código no cambió.
+
+## Tiempos entre pantallas
+
+Con pocas filas, lo que más pesa al cambiar de pantalla no es la base sino la distancia.
+Cada pantalla con sesión hace varias idas y vueltas a Supabase (validar la sesión, leer el
+usuario, las consultas), y Supabase está en São Paulo (`sa-east-1`). Si las funciones de
+Vercel corren en su región por defecto (Washington, `iad1`), cada ida y vuelta cruza el
+continente.
+
+- **`vercel.json` fija las funciones en `gru1` (São Paulo)**, al lado de la base. Se
+  confirma en Vercel → Settings → Functions → Function Region después del deploy.
+- **Cada pantalla tiene su `loading.tsx`** (listado, ficha, nueva solicitud, triaje,
+  destino, galería), con el aviso "Cargando…" y la forma del contenido. Next lo muestra
+  apenas se toca el enlace, sin esperar al servidor.
+- **Los enlaces de la barra muestran el relojito** mientras navegan (`useLinkStatus`).
+

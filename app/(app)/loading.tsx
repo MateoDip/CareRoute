@@ -1,16 +1,15 @@
+import { Cargando } from "@/components/cargando";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Cargando el listado (clase 10). Next.js envuelve la página en <Suspense> con
- * este archivo: sin useEffect ni bandera. El esqueleto tiene la forma del
- * contenido (título, vistas, filtro y filas), no un spinner centrado.
+ * este archivo: sin useEffect ni bandera. Arriba, el aviso con el relojito; abajo,
+ * el esqueleto con la forma del contenido (título, vistas, filtro y filas).
  */
 export default function CargandoListado() {
   return (
     <div className="flex flex-col gap-6" aria-busy="true">
-      <p role="status" className="sr-only">
-        Cargando solicitudes…
-      </p>
+      <Cargando texto="Cargando solicitudes…" />
       <div className="flex flex-col gap-2">
         <Skeleton className="h-9 w-72 max-w-full" />
         <Skeleton className="h-5 w-56 max-w-full" />

@@ -8,6 +8,7 @@ import {
   FiltroSolicitudes,
   type SolicitudEnLista,
 } from "@/components/filtro-solicitudes";
+import { Cargando } from "@/components/cargando";
 import { FranjaTriaje, Marca } from "@/components/marca";
 import { SinDatos } from "@/components/sin-datos";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -215,7 +216,9 @@ export default async function Sistema() {
         </Alert>
       </Seccion>
 
-      <Seccion titulo="Cargando (esqueleto)">
+      <Seccion titulo="Cargando (aviso y esqueleto)">
+        <Cargando />
+        <Cargando texto="Buscando centros con cama…" />
         <Skeleton className="h-8 w-64 max-w-full" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />

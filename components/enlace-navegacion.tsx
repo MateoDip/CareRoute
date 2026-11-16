@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { IndicadorNavegando } from "@/components/indicador-navegando";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +13,8 @@ type Props = {
 
 /**
  * Un enlace de la barra que se marca cuando es la pantalla actual
- * (aria-current="page"). Es de cliente solo para leer la URL: el resto de la
- * barra se dibuja en el servidor.
+ * (aria-current="page") y muestra el relojito mientras navega. Es de cliente
+ * solo para leer la URL: el resto de la barra se dibuja en el servidor.
  *
  * "/" y "/?rol=destino" son la misma ruta: se distinguen por el query param.
  */
@@ -35,6 +36,7 @@ export function EnlaceNavegacion({ href, children }: Props) {
       )}
     >
       {children}
+      <IndicadorNavegando />
     </Link>
   );
 }

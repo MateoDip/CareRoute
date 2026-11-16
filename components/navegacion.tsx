@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { salir } from "@/app/acciones-sesion";
 import { EnlaceNavegacion } from "@/components/enlace-navegacion";
+import { IndicadorNavegando } from "@/components/indicador-navegando";
 import { Marca } from "@/components/marca";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { IconoMas } from "@/components/ui/iconos";
@@ -48,6 +49,7 @@ export function Navegacion({ nombre, rol }: Props) {
             >
               <IconoMas />
               Nueva solicitud
+              <IndicadorNavegando />
             </Link>
           )}
         </div>
