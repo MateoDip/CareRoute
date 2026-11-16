@@ -37,6 +37,8 @@ const PARES: Par[] = [
   { texto: "triaje-rojo", fondo: "card", uso: "franja de nivel crítico", minimo: 3 },
   { texto: "triaje-naranja", fondo: "card", uso: "franja de nivel alto", minimo: 3 },
   { texto: "triaje-verde", fondo: "card", uso: "franja de nivel bajo", minimo: 3 },
+  { texto: "marca-texto", fondo: "marca-fondo", uso: "panel de la marca (login)", minimo: 4.5 },
+  { texto: "marca-principal", fondo: "marca-fondo", uso: "logo y destacado sobre el panel de la marca", minimo: 4.5 },
 ];
 
 function variables(bloque: string): Map<string, string> {

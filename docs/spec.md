@@ -217,30 +217,32 @@ corre de nuevo y se reemplaza esta tabla.
 
 | Par (texto / fondo) | Uso | Claro | Oscuro |
 |---|---|---|---|
-| `foreground` / `background` | texto (mín. 4,5) | 15,8:1 | 15,8:1 |
-| `foreground` / `card` | texto en tarjeta (mín. 4,5) | 17,3:1 | 14,2:1 |
-| `muted-foreground` / `background` | texto secundario (mín. 4,5) | 6,5:1 | 8,6:1 |
-| `muted-foreground` / `card` | texto secundario en tarjeta (mín. 4,5) | 7,1:1 | 7,8:1 |
-| `muted-foreground` / `muted` | texto secundario (hover) (mín. 4,5) | 6,1:1 | 6,5:1 |
-| `primary-foreground` / `primary` | botón principal (mín. 4,5) | 7,7:1 | 8,7:1 |
-| `primary` / `background` | enlace (mín. 4,5) | 7,0:1 | 9,7:1 |
-| `primary` / `card` | enlace en tarjeta (mín. 4,5) | 7,7:1 | 8,7:1 |
-| `primary` / `accent` | badge suave / opción elegida (mín. 4,5) | 6,5:1 | 6,8:1 |
-| `accent-foreground` / `accent` | hover (mín. 4,5) | 14,7:1 | 11,0:1 |
-| `secondary-foreground` / `secondary` | botón secundario (mín. 4,5) | 14,5:1 | 11,9:1 |
-| `destructive` / `card` | texto de error (mín. 4,5) | 6,6:1 | 6,8:1 |
+| `foreground` / `background` | texto (mín. 4,5) | 16,3:1 | 15,9:1 |
+| `foreground` / `card` | texto en tarjeta (mín. 4,5) | 18,2:1 | 14,0:1 |
+| `muted-foreground` / `background` | texto secundario (mín. 4,5) | 6,3:1 | 8,7:1 |
+| `muted-foreground` / `card` | texto secundario en tarjeta (mín. 4,5) | 7,1:1 | 7,7:1 |
+| `muted-foreground` / `muted` | texto secundario (hover) (mín. 4,5) | 6,0:1 | 6,8:1 |
+| `primary-foreground` / `primary` | botón principal (mín. 4,5) | 6,4:1 | 8,4:1 |
+| `primary` / `background` | enlace (mín. 4,5) | 5,8:1 | 8,4:1 |
+| `primary` / `card` | enlace en tarjeta (mín. 4,5) | 6,4:1 | 7,4:1 |
+| `primary` / `accent` | badge suave / opción elegida (mín. 4,5) | 5,6:1 | 5,7:1 |
+| `accent-foreground` / `accent` | hover (mín. 4,5) | 15,7:1 | 10,8:1 |
+| `secondary-foreground` / `secondary` | botón secundario (mín. 4,5) | 15,2:1 | 12,4:1 |
+| `destructive` / `card` | texto de error (mín. 4,5) | 6,6:1 | 6,6:1 |
 | `destructive` / `destructive-suave` | badge de rechazo (mín. 4,5) | 5,8:1 | 6,6:1 |
 | `destructive-foreground` / `destructive` | botón destructivo (mín. 4,5) | 6,6:1 | 7,6:1 |
 | `triaje-rojo-texto` / `triaje-rojo-suave` | badge nivel crítico (mín. 4,5) | 7,8:1 | 9,7:1 |
 | `triaje-naranja-texto` / `triaje-naranja-suave` | badge nivel alto (mín. 4,5) | 7,4:1 | 10,0:1 |
 | `triaje-amarillo-texto` / `triaje-amarillo-suave` | badge nivel medio (mín. 4,5) | 7,5:1 | 10,3:1 |
 | `triaje-verde-texto` / `triaje-verde-suave` | badge nivel bajo (mín. 4,5) | 7,2:1 | 9,5:1 |
-| `ring` / `background` | foco (mín. 3) | 7,0:1 | 9,7:1 |
-| `ring` / `card` | foco en tarjeta (mín. 3) | 7,7:1 | 8,7:1 |
-| `input` / `card` | borde de campo (mín. 3) | 4,4:1 | 5,0:1 |
-| `triaje-rojo` / `card` | franja de nivel crítico (mín. 3) | 5,7:1 | 5,3:1 |
-| `triaje-naranja` / `card` | franja de nivel alto (mín. 3) | 4,1:1 | 7,5:1 |
-| `triaje-verde` / `card` | franja de nivel bajo (mín. 3) | 4,3:1 | 7,3:1 |
+| `ring` / `background` | foco (mín. 3) | 5,8:1 | 8,4:1 |
+| `ring` / `card` | foco en tarjeta (mín. 3) | 6,4:1 | 7,4:1 |
+| `input` / `card` | borde de campo (mín. 3) | 4,3:1 | 5,0:1 |
+| `triaje-rojo` / `card` | franja de nivel crítico (mín. 3) | 5,7:1 | 5,1:1 |
+| `triaje-naranja` / `card` | franja de nivel alto (mín. 3) | 4,1:1 | 7,2:1 |
+| `triaje-verde` / `card` | franja de nivel bajo (mín. 3) | 4,3:1 | 7,1:1 |
+| `marca-texto` / `marca-fondo` | panel de la marca (login) (mín. 4,5) | 15,9:1 | 15,9:1 |
+| `marca-principal` / `marca-fondo` | logo y destacado sobre el panel de la marca (mín. 4,5) | 8,4:1 | 8,4:1 |
 
 La franja amarilla del nivel medio no llega a 3:1 sobre blanco (es el amarillo del triaje) y
 no está en la tabla a propósito: es decorativa. El nivel siempre está escrito en el badge de

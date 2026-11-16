@@ -1,31 +1,60 @@
-import { IconoMarca } from "@/components/ui/iconos";
 import { cn } from "@/lib/utils";
 
 /**
- * La marca: la cruz-ruta sobre petróleo y el nombre. El dibujo es decorativo;
- * el nombre del sistema lo dice el texto.
+ * El logo de CareRoute, el de la presentación: una ruta que se curva en una C,
+ * del punto de partida (hielo) al de llegada (coral), con el trayecto punteado
+ * adentro. Usa solo los tokens `marca-*` (app/globals.css). Es decorativo: el
+ * nombre del sistema lo dice el texto de al lado.
+ */
+export function LogoCareRoute({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="-74 -74 148 148"
+      aria-hidden="true"
+      focusable="false"
+      className={cn("fill-none", className)}
+    >
+      <path
+        d="M46 -40 A62 62 0 1 0 46 40"
+        className="stroke-marca-principal"
+        strokeWidth={18}
+        strokeLinecap="round"
+      />
+      <path
+        d="M-18 0 H22"
+        className="stroke-marca-principal"
+        strokeWidth={10}
+        strokeLinecap="round"
+        strokeDasharray="2 16"
+      />
+      <circle cx={46} cy={40} r={17} className="fill-marca-acento" />
+      <circle cx={46} cy={-40} r={11} className="fill-marca-texto" />
+    </svg>
+  );
+}
+
+/**
+ * La marca: el logo sobre su recuadro azul noche y el nombre. El recuadro es
+ * igual en los dos temas, así el logo se ve siempre con los colores de la
+ * presentación.
  */
 export function Marca({
   className,
   grande = false,
-  invertida = false,
 }: {
   className?: string;
   grande?: boolean;
-  /** Sobre fondo petróleo: el cuadrado va claro y el dibujo oscuro. */
-  invertida?: boolean;
 }) {
   return (
     <span className={cn("flex items-center gap-2", className)}>
       <span
         aria-hidden="true"
         className={cn(
-          "grid place-items-center rounded-lg",
-          invertida ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
+          "grid place-items-center rounded-lg bg-marca-fondo",
           grande ? "size-10" : "size-8",
         )}
       >
-        <IconoMarca className={grande ? "size-6" : "size-5"} />
+        <LogoCareRoute className={grande ? "size-7" : "size-6"} />
       </span>
       <span className={cn("font-bold tracking-tight", grande ? "text-2xl" : "text-lg")}>
         CareRoute

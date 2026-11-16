@@ -104,7 +104,14 @@ export default async function Sistema() {
       </Seccion>
 
       <Seccion titulo="Marca y colores del triaje">
-        <Marca />
+        <div className="flex flex-wrap items-center gap-6">
+          <Marca />
+          <Marca grande />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          El logo usa los colores de la presentación (tokens marca-*). El coral va solo dentro
+          del logo: en cualquier otro lugar se leería como un nivel de urgencia.
+        </p>
         <p className="text-sm text-muted-foreground">
           Los cuatro colores del triaje se usan solo para el nivel de urgencia.
         </p>
