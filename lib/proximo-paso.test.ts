@@ -50,7 +50,49 @@ describe("proximoPaso", () => {
 
   it("RECHAZADA: nadie puede hacer nada", () => {
     const paso = proximoPaso({ ...receptorDestino, estado: "RECHAZADA", tieneDestino: true });
-    expect(paso).toMatchObject({ aprobar: false, rechazar: false });
+    expect(paso).toMatchObject({ aprobar: false, rechazar: false, iniciarTraslado: false, finalizarTraslado: false });
     expect(paso.aviso).toMatch(/rechazada/);
+  });
+
+  // Seguimiento del traslado (HU07, ADR 0011): el origen marca la salida y el
+  // destino la llegada. Cada uno da fe de lo que ve.
+
+  it("APROBADA: el derivante del origen inicia el traslado", () => {
+    const paso = proximoPaso({ ...derivanteOrigen, estado: "APROBADA", tieneDestino: true });
+    expect(paso).toMatchObject({ iniciarTraslado: true, finalizarTraslado: false });
+  });
+
+  it("APROBADA: el receptor no inicia el traslado, lo espera", () => {
+    const paso = proximoPaso({ ...receptorDestino, estado: "APROBADA", tieneDestino: true });
+    expect(paso).toMatchObject({ iniciarTraslado: false, finalizarTraslado: false });
+  });
+
+  it("EN_CURSO: el receptor del destino marca la llegada y ya nadie rechaza", () => {
+    const paso = proximoPaso({ ...receptorDestino, estado: "EN_CURSO", tieneDestino: true });
+    expect(paso).toMatchObject({ finalizarTraslado: true, iniciarTraslado: false, rechazar: false });
+    expect(paso.aviso).toMatch(/en camino/);
+  });
+
+  it("EN_CURSO: el derivante espera la llegada", () => {
+    const paso = proximoPaso({ ...derivanteOrigen, estado: "EN_CURSO", tieneDestino: true });
+    expect(paso).toMatchObject({ finalizarTraslado: false, iniciarTraslado: false, rechazar: false });
+    expect(paso.aviso).toMatch(/destino marca la llegada/);
+  });
+
+  it("FINALIZADA: no queda nada por hacer", () => {
+    const paso = proximoPaso({ ...receptorDestino, estado: "FINALIZADA", tieneDestino: true });
+    expect(paso).toMatchObject({ finalizarTraslado: false, iniciarTraslado: false, rechazar: false });
+    expect(paso.aviso).toMatch(/terminó/);
+  });
+
+  it("un receptor que mira desde el origen no inicia ni finaliza", () => {
+    const paso = proximoPaso({
+      rol: "MEDICO_RECEPTOR",
+      esOrigen: true,
+      esDestino: false,
+      estado: "EN_CURSO",
+      tieneDestino: true,
+    });
+    expect(paso).toMatchObject({ iniciarTraslado: false, finalizarTraslado: false });
   });
 });

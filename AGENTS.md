@@ -195,7 +195,8 @@ app/
     page.tsx, loading.tsx          listado de solicitudes (/, /?rol=destino)
     error.tsx, not-found.tsx       error y 404 de las pantallas con sesión
     solicitudes/nueva/             iniciar una solicitud: page + acciones + formulario (HU01)
-    solicitudes/[id]/              ficha (page + loading) + acciones aprobar / rechazar
+    solicitudes/[id]/              ficha (page + loading) + acciones aprobar / rechazar /
+                                   iniciar y finalizar traslado
     solicitudes/[id]/triaje/       triaje con la IA o nivel a mano (HU02)
     solicitudes/[id]/destino/      ranking y elección del destino (HU03, HU04)
     sistema/page.tsx               galería del sistema visual

@@ -308,6 +308,50 @@ Cookie: {{sesionReceptor}}
 
 
 ###############################################################################
+# POST /api/solicitudes/:id/inicio   (HU07 — sale el paciente, sin body)
+# Usa {{solicitudPropuesta}}, que quedó APROBADA en la sección anterior.
+###############################################################################
+
+### Rol incorrecto: la salida la marca el origen, no el receptor → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/inicio
+Cookie: {{sesionReceptor}}
+
+### De otro centro → 404
+POST {{base}}/api/solicitudes/{{solicitudDeOtroCentro}}/inicio
+Cookie: {{sesionDerivante}}
+
+### Éxito → 200: EN_CURSO y "Paciente a bordo" en la bitácora
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/inicio
+Cookie: {{sesionDerivante}}
+
+### Iniciarlo otra vez → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/inicio
+Cookie: {{sesionDerivante}}
+
+
+###############################################################################
+# POST /api/solicitudes/:id/finalizacion   (HU07 — llega el paciente, sin body)
+###############################################################################
+
+### Rol incorrecto: la llegada la marca el destino, no el derivante → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/finalizacion
+Cookie: {{sesionDerivante}}
+
+### Todavía no salió (APROBADA) → 409 + estadoActual + transicionesPosibles
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/finalizacion
+Cookie: {{sesionReceptor}}
+
+### Éxito → 200: FINALIZADA, "Llegó al centro de destino" en la bitácora y el paciente
+### se puede volver a derivar desde su centro (regla 6)
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/finalizacion
+Cookie: {{sesionReceptor}}
+
+### Finalizarla otra vez → 409 + estadoActual + transicionesPosibles (vacía)
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/finalizacion
+Cookie: {{sesionReceptor}}
+
+
+###############################################################################
 # POST /api/solicitudes/:id/rechazo   (spec §6)
 ###############################################################################
 

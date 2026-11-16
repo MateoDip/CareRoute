@@ -6,6 +6,10 @@ export type ProximoPaso = {
   elegirDestino: boolean;
   aprobar: boolean;
   rechazar: boolean;
+  /** El origen marca que el paciente salió (APROBADA → EN_CURSO, ADR 0011). */
+  iniciarTraslado: boolean;
+  /** El destino marca que el paciente llegó (EN_CURSO → FINALIZADA, ADR 0011). */
+  finalizarTraslado: boolean;
   /** Qué está pasando cuando no hay nada para hacer desde este lado. */
   aviso: string | null;
 };
@@ -34,18 +38,26 @@ export function proximoPaso(params: {
     elegirDestino: derivante && estado === "EVALUANDO",
     aprobar: receptor && estado === "EVALUANDO",
     rechazar: (derivante || receptor) && rolesQuePuedenRechazar(estado).includes(rol),
+    iniciarTraslado: derivante && estado === "APROBADA",
+    finalizarTraslado: receptor && estado === "EN_CURSO",
     aviso: null,
   };
 
   if (estado === "RECHAZADA") paso.aviso = "La derivación fue rechazada. No hay nada pendiente.";
   else if (estado === "FINALIZADA") paso.aviso = "El traslado terminó. No hay nada pendiente.";
-  else if (estado === "EN_CURSO") paso.aviso = "El traslado está en curso.";
+  else if (derivante && estado === "EN_CURSO") {
+    paso.aviso = "El paciente está en camino. El centro de destino marca la llegada.";
+  } else if (receptor && estado === "EN_CURSO") {
+    paso.aviso = "El paciente está en camino. Cuando llegue, marcá la llegada.";
+  } else if (estado === "EN_CURSO") paso.aviso = "El traslado está en curso.";
   else if (derivante && estado === "EVALUANDO" && tieneDestino) {
     paso.aviso = "Esperando que el centro de destino la apruebe. Mientras tanto podés cambiar el destino.";
   } else if (derivante && estado === "APROBADA") {
-    paso.aviso = "La aprobó el centro de destino. Desde ahora solo ese centro puede cancelarla.";
+    paso.aviso =
+      "La aprobó el centro de destino. Desde ahora solo ese centro puede cancelarla. Cuando el paciente salga, marcá el inicio del traslado.";
   } else if (receptor && estado === "APROBADA") {
-    paso.aviso = "Aprobada: la cama está reservada. Si la rechazás, la cama vuelve a quedar libre.";
+    paso.aviso =
+      "Aprobada: la cama está reservada. Si la rechazás, la cama vuelve a quedar libre. El centro de origen marca la salida del paciente.";
   } else if (!derivante && !receptor) {
     paso.aviso = "Desde tu rol no hay acciones para esta solicitud.";
   }

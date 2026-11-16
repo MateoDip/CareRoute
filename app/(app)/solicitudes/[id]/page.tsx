@@ -24,7 +24,12 @@ import {
 } from "@/lib/formato";
 import { proximoPaso } from "@/lib/proximo-paso";
 import { cn } from "@/lib/utils";
-import { aprobarAction, rechazarAction } from "./acciones";
+import {
+  aprobarAction,
+  finalizarTrasladoAction,
+  iniciarTrasladoAction,
+  rechazarAction,
+} from "./acciones";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -59,7 +64,13 @@ export default async function DetalleSolicitud({ params }: Props) {
     esDestino: solicitud.centroDestinoId === usuario.centroSaludId,
     tieneDestino: solicitud.centroDestinoId !== null,
   });
-  const hayAcciones = paso.cargarTriaje || paso.elegirDestino || paso.aprobar || paso.rechazar;
+  const hayAcciones =
+    paso.cargarTriaje ||
+    paso.elegirDestino ||
+    paso.aprobar ||
+    paso.rechazar ||
+    paso.iniciarTraslado ||
+    paso.finalizarTraslado;
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,8 +136,24 @@ export default async function DetalleSolicitud({ params }: Props) {
             )}
           </div>
         )}
-        {(paso.aprobar || paso.rechazar) && (
+        {(paso.aprobar || paso.rechazar || paso.iniciarTraslado || paso.finalizarTraslado) && (
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+            {paso.iniciarTraslado && (
+              <BotonAccion
+                accion={iniciarTrasladoAction.bind(null, solicitud.id)}
+                texto="Iniciar traslado"
+                textoPendiente="Iniciando…"
+                confirmacion="Confirmá que el paciente salió hacia el centro de destino. Desde ahora la derivación ya no se puede rechazar."
+              />
+            )}
+            {paso.finalizarTraslado && (
+              <BotonAccion
+                accion={finalizarTrasladoAction.bind(null, solicitud.id)}
+                texto="Marcar llegada del paciente"
+                textoPendiente="Finalizando…"
+                confirmacion="Confirmá que el paciente llegó a tu centro. El traslado queda finalizado y no se puede deshacer."
+              />
+            )}
             {paso.aprobar && (
               <BotonAccion
                 accion={aprobarAction.bind(null, solicitud.id)}

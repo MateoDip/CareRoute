@@ -111,7 +111,10 @@ README.
 **Como** médico del centro de origen o de destino, **quiero** ver el estado de la derivación, la tripulación asignada y su bitácora, **para** saber en qué punto está el traslado.
 
 - [x] **Dado** que mi centro es origen o destino, **cuando** abro la solicitud, **entonces** veo su estado, el triaje, la tripulación asignada y los eventos de bitácora en orden.
+- [x] **Dado** que la derivación está aprobada y soy el derivante del origen, **cuando** el paciente sale, **entonces** marco el inicio del traslado: pasa a `EN_CURSO` y queda "Paciente a bordo" en la bitácora.
+- [x] **Dado** que el traslado está en curso y soy el receptor del destino, **cuando** el paciente llega, **entonces** marco la llegada: pasa a `FINALIZADA`, queda "Llegó al centro de destino" en la bitácora y el paciente se puede volver a derivar.
 - [x] **Caso de error:** **dado** que la solicitud es de otro centro, **cuando** intento abrirla, **entonces** el sistema responde que no existe.
+- [x] **Caso de error (regla 7):** **dado** que soy el receptor, **cuando** intento marcar la salida del paciente (o soy el derivante y quiero marcar la llegada), **entonces** el sistema no me deja: cada centro marca lo que ve.
 
 ## 5. Flujo principal
 
@@ -122,7 +125,7 @@ El recorrido que da valor al sistema (no un ABM):
 3. El sistema muestra el ranking de centros con cama del tipo requerido (HU03).
 4. El derivante **elige el destino** del ranking (HU04).
 5. El **médico receptor** de ese centro la ve entre sus entrantes (HU06) y **la aprueba**: se reserva la cama, pasa a `APROBADA` y queda la fecha y hora (HU04).
-6. Se asigna una `TripulacionMedica` y el traslado se sigue por su estado y la bitácora (HU07).
+6. Se asigna una `TripulacionMedica` y el traslado se sigue por su estado y la bitácora (HU07): el **derivante** marca la salida del paciente (`EN_CURSO`) y el **receptor**, su llegada (`FINALIZADA`), que cierra la derivación.
 
 Antes de `EN_CURSO`, cualquiera de los dos médicos puede rechazar la derivación, con la restricción de la regla 3 de la sección 6.
 
@@ -143,11 +146,14 @@ Una pantalla de otro rol responde 404, como una solicitud de otro centro.
 | 5a. Ver las entrantes (HU06) | Listado filtrado por entrantes | `/?rol=destino` | Médico con centro |
 | 5b. Aprobar o rechazar (HU04) | Botones en la tarjeta "Qué sigue" de la ficha; rechazar pide confirmación | `/solicitudes/:id` | Receptor del destino; el derivante del origen puede rechazar antes de `APROBADA` |
 | 6. Seguir el traslado (HU07) | Ficha: triaje, tripulación y bitácora | `/solicitudes/:id` | Médico con centro, si su centro es origen o destino |
+| 6a. Marcar la salida (HU07) | Botón "Iniciar traslado" en "Qué sigue", con confirmación | `/solicitudes/:id` | Derivante del origen, con la solicitud `APROBADA` |
+| 6b. Marcar la llegada (HU07) | Botón "Marcar llegada del paciente" en "Qué sigue", con confirmación | `/solicitudes/:id` | Receptor del destino, con la solicitud `EN_CURSO` |
 | — | Listado de solicitudes del centro, con filtro por estado | `/` | Médico con centro |
 | — | Galería del sistema visual | `/sistema` | Médico con centro |
 
-Sin pantalla todavía: asignar tripulación y registrar la bitácora del traslado (paso 6, solo
-lectura por ahora) y actualizar la disponibilidad de camas (HU05), que están en la API.
+Sin pantalla todavía: asignar tripulación y registrar en la bitácora los eventos que no son la
+salida ni la llegada (por ejemplo, una complicación clínica), y actualizar la disponibilidad de
+camas (HU05), que está en la API.
 
 ## 6. Reglas de negocio
 
@@ -159,6 +165,7 @@ Las restricciones que **no** son obvias y que la IA no puede adivinar. Estas son
 4. Un usuario que se registra con Google entra como médico derivante **sin centro** y no puede operar hasta que un admin le asigne centro (y, si corresponde, rol). Nadie puede asignarse un rol a sí mismo, y un admin no puede quitarse su propio rol.
 5. No se puede dar de baja un centro que tenga usuarios o derivaciones (el historial es inmutable).
 6. Un paciente (por DNI) no puede tener más de una derivación **abierta** (`PENDIENTE`, `EVALUANDO`, `APROBADA` o `EN_CURSO`) desde el mismo centro de origen: dos derivaciones del mismo paciente reservarían dos camas para una persona. Cuando la derivación se rechaza o finaliza, el paciente se puede volver a derivar. Es una regla de "uno solo" (clase 14): la cumple la base con un índice único, no un `if` (ADR 0010). El alcance es el centro de origen a propósito: un 409 por una derivación de otro hospital revelaría que ese paciente está siendo derivado allá.
+7. Cada centro marca lo que ve (ADR 0011): la salida del paciente (`APROBADA` → `EN_CURSO`) la marca solo el médico derivante del centro de origen, y la llegada (`EN_CURSO` → `FINALIZADA`) solo el médico receptor del centro de destino. Ninguno de los dos da fe de algo que pasó en otro hospital. Desde `EN_CURSO` la derivación ya no se puede rechazar: el paciente está en la ambulancia.
 
 ## 7. Requisitos no funcionales
 

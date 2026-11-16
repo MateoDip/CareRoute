@@ -22,7 +22,7 @@ const DNI = "30123456";
 const DNI_EN_PANTALLA = "DNI 30.123.456";
 const DESTINO = "Hospital Provincial del Centenario";
 
-test("flujo principal: del DNI del paciente a la cama reservada en el destino", async ({ browser }) => {
+test("flujo principal: del DNI del paciente a su llegada al centro de destino", async ({ browser }) => {
   const telefono = await browser.newContext({
     ...devices["Pixel 7"],
     storageState: sesionDe("derivante"),
@@ -109,8 +109,31 @@ test("flujo principal: del DNI del paciente a la cama reservada en el destino", 
     await derivante.goto(fichaUrl);
     await expect(derivante.getByText("La aprobó el centro de destino")).toBeVisible();
     await expect(derivante.getByRole("button", { name: "Rechazar derivación" })).toHaveCount(0);
-    // Paso 6 de la spec (tripulación y bitácora): todavía sin pantalla para cargarlos.
+    // La tripulación todavía no tiene pantalla para asignarla; la bitácora sí se ve.
     await expect(derivante.getByRole("heading", { name: "Bitácora del traslado" })).toBeVisible();
+  });
+
+  await test.step("7. el derivante marca la salida del paciente: el traslado queda en curso (HU07, ADR 0011)", async () => {
+    await derivante.getByRole("button", { name: "Iniciar traslado" }).click();
+    // Pide confirmar antes: desde EN_CURSO la derivación ya no se puede rechazar.
+    await derivante.getByRole("button", { name: "Sí, iniciar traslado" }).click();
+
+    await expect(derivante.getByText("En curso", { exact: true })).toBeVisible();
+    await expect(derivante.getByText("El centro de destino marca la llegada")).toBeVisible();
+    await expect(derivante.getByText("Paciente a bordo")).toBeVisible();
+    // La llegada no la marca el origen.
+    await expect(derivante.getByRole("button", { name: "Marcar llegada del paciente" })).toHaveCount(0);
+  });
+
+  await test.step("8. el receptor marca la llegada: el traslado termina (HU07, ADR 0011)", async () => {
+    await receptor.reload();
+    await expect(receptor.getByText("Cuando llegue, marcá la llegada")).toBeVisible();
+    await receptor.getByRole("button", { name: "Marcar llegada del paciente" }).click();
+    await receptor.getByRole("button", { name: "Sí, marcar llegada del paciente" }).click();
+
+    await expect(receptor.getByText("El traslado terminó")).toBeVisible();
+    await expect(receptor.getByText("Llegó al centro de destino")).toBeVisible();
+    await expect(receptor.getByRole("button", { name: "Marcar llegada del paciente" })).toHaveCount(0);
   });
 
   await telefono.close();

@@ -55,7 +55,9 @@ sí mismo. La matriz de permisos completa está en [`docs/api.md`](./docs/api.md
 4. HU04  Elige el destino del ranking
 5. HU06  El receptor de ese centro la ve entre sus entrantes
    HU04  y la aprueba: se reserva la cama               → APROBADA
-6. HU07  Seguimiento: tripulación asignada y bitácora
+6. HU07  El derivante marca la salida del paciente      → EN_CURSO
+   HU07  El receptor marca la llegada                   → FINALIZADA
+         (cada paso queda en la bitácora)
 
 Antes de EN_CURSO se puede RECHAZAR; una APROBADA solo la rechaza el receptor.
 ```
@@ -114,6 +116,8 @@ Convención: sustantivos en plural; las operaciones del flujo que no son ABM se 
 | `POST /api/solicitudes/:id/destino` | Elige el destino (HU04) | Derivante del origen |
 | **`POST /api/solicitudes/:id/aprobacion`** | **Aprueba y reserva la cama (HU04)** | **Receptor del destino** |
 | `POST /api/solicitudes/:id/rechazo` | Cancela la derivación | Derivante o receptor, según estado |
+| `POST /api/solicitudes/:id/inicio` | El paciente sale: pasa a `EN_CURSO` (HU07) | Derivante del origen |
+| `POST /api/solicitudes/:id/finalizacion` | El paciente llega: pasa a `FINALIZADA` (HU07) | Receptor del destino |
 | `GET /api/solicitudes/:id/bitacora` | Eventos del traslado (HU07) | Médicos del centro involucrado |
 | `GET/POST /api/centros`, `GET/PATCH/DELETE /api/centros/:id` | CRUD de centros | Lectura: todos · Escritura: Admin |
 | `PATCH /api/unidades/:id` | Actualiza camas (HU05) | Receptor del centro o Admin |
