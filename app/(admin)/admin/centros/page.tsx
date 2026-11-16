@@ -10,6 +10,8 @@ import { ETIQUETA_COMPLEJIDAD, ETIQUETA_UNIDAD } from "@/lib/formato";
 
 export const metadata: Metadata = { title: "Centros · CareRoute" };
 
+const ORDEN = ["UTI", "UCO", "SALA_COMUN", "GUARDIA"] as const;
+
 /**
  * /admin/centros — los centros de salud de la red, con las camas libres de cada
  * unidad. CentroSalud es la entidad con CRUD completo (spec §2): desde acá se da
@@ -56,7 +58,8 @@ export default async function CentrosAdmin() {
                   <p className="text-sm">
                     {centro.unidadesCuidados.length === 0
                       ? "Sin unidades cargadas"
-                      : centro.unidadesCuidados
+                      : [...centro.unidadesCuidados]
+                          .sort((a, b) => ORDEN.indexOf(a.tipo) - ORDEN.indexOf(b.tipo))
                           .map((unidad) => `${ETIQUETA_UNIDAD[unidad.tipo]}: ${unidad.camasDisponibles} libres`)
                           .join(" · ")}
                   </p>

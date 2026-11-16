@@ -95,4 +95,30 @@ describe("proximoPaso", () => {
     });
     expect(paso).toMatchObject({ iniciarTraslado: false, finalizarTraslado: false });
   });
+
+  // Regla 7: con el paciente internado en el destino, el receptor le da el alta
+  // o lo pasa a otra unidad. Nadie más.
+  it("FINALIZADA con el paciente internado: el receptor del destino da el alta o lo pasa de unidad", () => {
+    const paso = proximoPaso({ ...receptorDestino, estado: "FINALIZADA", tieneDestino: true, internadoEn: "UTI" });
+    expect(paso).toMatchObject({ darDeAlta: true, cambiarDeUnidad: true, rechazar: false });
+    expect(paso.aviso).toMatch(/internado en UTI/);
+  });
+
+  it("FINALIZADA con el paciente internado: el derivante del origen no da el alta", () => {
+    const paso = proximoPaso({ ...derivanteOrigen, estado: "FINALIZADA", tieneDestino: true, internadoEn: "UTI" });
+    expect(paso).toMatchObject({ darDeAlta: false, cambiarDeUnidad: false });
+    expect(paso.aviso).toMatch(/internado en el centro de destino/);
+  });
+
+  it("FINALIZADA con alta: ya no hay cama que liberar", () => {
+    const paso = proximoPaso({ ...receptorDestino, estado: "FINALIZADA", tieneDestino: true, internadoEn: null });
+    expect(paso).toMatchObject({ darDeAlta: false, cambiarDeUnidad: false });
+  });
+
+  it("antes de que llegue el paciente no hay alta ni pase de unidad", () => {
+    for (const estado of ["APROBADA", "EN_CURSO"] as const) {
+      const paso = proximoPaso({ ...receptorDestino, estado, tieneDestino: true });
+      expect(paso).toMatchObject({ darDeAlta: false, cambiarDeUnidad: false });
+    }
+  });
 });

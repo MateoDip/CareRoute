@@ -26,9 +26,11 @@ endpoint público es `GET /auth/callback`, que es el que crea la sesión.
 | POST | `/api/solicitudes/:id/rechazo` | Cancela la derivación. Si estaba `APROBADA`, devuelve la cama | spec §6 | Derivante (origen) o receptor (destino); una `APROBADA`, solo el receptor | 401 · 403 · 404 · 409 |
 | POST | `/api/solicitudes/:id/inicio` | El paciente sale del origen: `APROBADA` → `EN_CURSO` y "Paciente a bordo" en la bitácora | HU07 | MEDICO_DERIVANTE del origen | 401 · 403 · 404 · 409 estado |
 | POST | `/api/solicitudes/:id/finalizacion` | El paciente llega al destino: `EN_CURSO` → `FINALIZADA`, "Llegó al centro de destino" en la bitácora y la derivación se cierra | HU07 | MEDICO_RECEPTOR del destino | 401 · 403 · 404 · 409 estado |
+| POST | `/api/solicitudes/:id/cambio-de-unidad` | El paciente internado pasa a otra unidad del destino (body `{ "tipo": "SALA_COMUN" }`): libera su cama y ocupa una del tipo nuevo, todo o nada | spec §6, regla 7 | MEDICO_RECEPTOR del destino | 400 · 401 · 403 · 404 · 409 estado, misma unidad o sin cama |
+| POST | `/api/solicitudes/:id/alta` | El paciente internado recibe el alta: su cama vuelve a quedar libre y queda "Alta del paciente" en la bitácora | spec §6, regla 7 | MEDICO_RECEPTOR del destino | 401 · 403 · 404 · 409 estado |
 | GET | `/api/solicitudes/:id/bitacora` | Historial de eventos del traslado | HU07 | Médico del origen o destino | 401 · 403 · 404 |
 | GET | `/api/centros` | Catálogo de centros con unidades y recursos | HU05 | Cualquier usuario logueado | 401 |
-| POST | `/api/centros` | Alta de un centro | spec §2 | ADMIN | 400 · 401 · 403 |
+| POST | `/api/centros` | Alta de un centro con sus camas libres de cada tipo (`camas`, opcional: si falta, todas en cero). Crea una unidad por tipo | spec §2, regla 7 | ADMIN | 400 · 401 · 403 |
 | GET | `/api/centros/:id` | Ficha de un centro | spec §2 | Cualquier usuario logueado | 401 · 404 |
 | PATCH | `/api/centros/:id` | Edita nombre, complejidad o ubicación | spec §2 | ADMIN | 400 · 401 · 403 · 404 |
 | DELETE | `/api/centros/:id` | Baja de un centro (unidades y recursos en cascada) | spec §3 | ADMIN | 401 · 403 · 404 · 409 con usuarios o derivaciones |
@@ -61,6 +63,7 @@ primera línea del handler (rol → 401/403) y el centro de la sesión en el `wh
 | `POST /api/solicitudes/:id/rechazo` | ✗ 403 | ✓ desde el origen, salvo `APROBADA` (403) | ✓ desde el destino | 401 |
 | `POST /api/solicitudes/:id/inicio` | ✗ 403 | ✓ solo origen, si no 404 | ✗ 403 | 401 |
 | `POST /api/solicitudes/:id/finalizacion` | ✗ 403 | ✗ 403 | ✓ solo destino, si no 404 | 401 |
+| `POST /api/solicitudes/:id/cambio-de-unidad`, `POST /api/solicitudes/:id/alta` | ✗ 403 | ✗ 403 | ✓ solo destino, si no 404 | 401 |
 | `GET /api/centros`, `GET /api/centros/:id` | ✓ | ✓ | ✓ | 401 |
 | `POST/PATCH/DELETE /api/centros…` | ✓ | ✗ 403 | ✗ 403 | 401 |
 | `PATCH /api/unidades/:id` | ✓ cualquier centro | ✗ 403 | ✓ solo su centro, si no 404 | 401 |
@@ -183,6 +186,12 @@ paciente (`POST /inicio`, `APROBADA` → `EN_CURSO`) y el **destino**, su llegad
 bitácora en la misma transacción. Desde `EN_CURSO` ya no se puede rechazar, y
 `FINALIZADA` cierra la derivación: el paciente se puede volver a derivar (regla 6).
 
+Con `FINALIZADA` el paciente queda **internado** en la cama que se reservó al aprobar
+(regla 7, [ADR 0012](./adr/0012-la-derivacion-sabe-que-cama-ocupa.md)). Sin cambiar de
+estado, el receptor puede pasarlo a otra unidad (`POST /cambio-de-unidad`) y darle el alta
+(`POST /alta`), que libera la cama. Cada uno deja su evento en la bitácora y mueve el
+contador de camas en la misma transacción.
+
 La tabla de transiciones vive una sola vez, en `lib/reglas-solicitud.ts`. Los handlers le
 preguntan; no tienen listas de estados propias.
 
@@ -238,6 +247,12 @@ indica quién agarra el error. Cada fila tiene su request en `docs/api.http`.
 | `POST /api/solicitudes/:id/inicio` | La solicitud no está `APROBADA` (todavía no la aprobó el destino, o ya salió) | 409 | regla | "El traslado solo puede iniciarse cuando el destino aprobó la derivación" + `estadoActual` + `transicionesPosibles` |
 | `POST /api/solicitudes/:id/finalizacion` | La solicitud no está `EN_CURSO` (el paciente todavía no salió, o ya llegó) | 409 | regla | "El traslado solo puede finalizarse si está en curso" + `estadoActual` + `transicionesPosibles` |
 | cualquier escritura condicional | Otro usuario cambió el estado mientras se procesaba | 409 | base | "La solicitud cambió de estado mientras se procesaba" |
+| `POST /api/solicitudes/:id/cambio-de-unidad` | El paciente no está internado: no llegó todavía o ya tiene el alta (regla 7) | 409 | regla | "Solo se puede pasar de unidad a un paciente que llegó y sigue internado" + `estadoActual` |
+| `POST /api/solicitudes/:id/cambio-de-unidad` | Ya está en esa unidad (regla 7) | 409 | regla | "El paciente ya está internado en esa unidad" |
+| `POST /api/solicitudes/:id/cambio-de-unidad` | No queda cama del tipo pedido en el centro, ni en el instante del pase (regla 7) | 409 | regla / base | "Capacidad agotada: …" + `tipoRequerido` + `tiposConCamaLibre`. El paciente sigue donde estaba |
+| `POST /api/solicitudes/:id/cambio-de-unidad` | `tipo` fuera de `UTI`, `UCO`, `SALA_COMUN`, `GUARDIA` | 400 | Zod | "Datos inválidos" + `detalles` |
+| `POST /api/solicitudes/:id/alta` | El paciente no está internado: no llegó todavía o ya tiene el alta (regla 7) | 409 | regla / base | "Solo se le puede dar el alta a un paciente que llegó y sigue internado" + `estadoActual`. Dos altas simultáneas liberan una sola cama: la otra recibe 409 |
+| `POST /api/centros` | Camas negativas o no enteras en `camas` (regla 7) | 400 | Zod | "Datos inválidos" + `detalles` |
 | `PATCH /api/unidades/:id` | Camas negativas (HU05) | 400 | Zod | "Datos inválidos" + `detalles` |
 | `DELETE /api/centros/:id` | El centro tiene usuarios o derivaciones (spec §3, `Restrict`) | 409 | regla | "No se puede dar de baja un centro con usuarios o derivaciones…" + `dependencias` |
 | `PATCH /api/usuarios/:id` | Un admin intenta quitarse el rol de admin a sí mismo | 409 | regla | "No podés quitarte el rol de administrador a vos mismo…" |

@@ -352,6 +352,63 @@ Cookie: {{sesionReceptor}}
 
 
 ###############################################################################
+# POST /api/solicitudes/:id/cambio-de-unidad y /alta   (regla 7)
+# Usan la solicitud {{solicitudPropuesta}} finalizada arriba: el paciente quedó
+# internado en la UTI del destino.
+###############################################################################
+
+### El derivante intenta pasarlo de unidad → 403 + rolesHabilitados
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionDerivante}}
+
+{ "tipo": "SALA_COMUN" }
+
+### Tipo inexistente → 400
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "tipo": "QUIROFANO" }
+
+### Todavía no llegó (APROBADA) → 409 "Solo se puede pasar de unidad a un paciente que llegó…"
+POST {{base}}/api/solicitudes/{{solicitudAprobada}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "tipo": "SALA_COMUN" }
+
+### A una unidad que el centro no tiene o sin camas → 409 "Capacidad agotada" + tiposConCamaLibre
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "tipo": "GUARDIA" }
+
+### Éxito → 200: libera la cama de UTI y ocupa una de sala común ("De UTI a Sala común" en la bitácora)
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "tipo": "SALA_COMUN" }
+
+### A la misma unidad en la que ya está → 409 "El paciente ya está internado en esa unidad"
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/cambio-de-unidad
+Content-Type: application/json
+Cookie: {{sesionReceptor}}
+
+{ "tipo": "SALA_COMUN" }
+
+### Alta → 200: la cama de sala común vuelve a quedar libre, "Alta del paciente" en la bitácora
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/alta
+Cookie: {{sesionReceptor}}
+
+### Alta otra vez → 409: ya no ocupa cama (no se libera dos veces)
+POST {{base}}/api/solicitudes/{{solicitudPropuesta}}/alta
+Cookie: {{sesionReceptor}}
+
+
+###############################################################################
 # POST /api/solicitudes/:id/rechazo   (spec §6)
 ###############################################################################
 
@@ -440,6 +497,20 @@ Content-Type: application/json
 Cookie: {{sesionAdmin}}
 
 { "nombre": "X", "nivelComplejidad": "ENORME", "ubicacion": "" }
+
+### Crear con sus camas libres de cada tipo (regla 7) → 201, con una unidad por tipo
+POST {{base}}/api/centros
+Content-Type: application/json
+Cookie: {{sesionAdmin}}
+
+{ "nombre": "Clínica con Camas", "nivelComplejidad": "MEDIA", "ubicacion": "Calle Falsa 456", "camas": { "UTI": 2, "UCO": 1, "SALA_COMUN": 10, "GUARDIA": 3 } }
+
+### Camas negativas → 400
+POST {{base}}/api/centros
+Content-Type: application/json
+Cookie: {{sesionAdmin}}
+
+{ "nombre": "Clínica con Camas", "nivelComplejidad": "MEDIA", "ubicacion": "Calle Falsa 456", "camas": { "UTI": -1, "UCO": 0, "SALA_COMUN": 0, "GUARDIA": 0 } }
 
 ### Crear siendo derivante → 403
 POST {{base}}/api/centros

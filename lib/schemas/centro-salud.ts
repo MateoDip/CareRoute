@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { idSchema } from "./comun";
+import { camasPorTipoSchema } from "./unidad-cuidados";
 
 export const nivelComplejidadSchema = z.enum(["BAJA", "MEDIA", "ALTA", "CRITICA"]);
 
-/** Body de POST /api/centros (ADMIN). El id lo genera la base. */
-export const crearCentroSchema = z.object({
+/** Los datos propios de un centro: nombre, complejidad y ubicación. */
+export const datosCentroSchema = z.object({
   nombre: z
     .string()
     .trim()
@@ -18,16 +19,27 @@ export const crearCentroSchema = z.object({
     .max(200, "La ubicación no puede superar los 200 caracteres"),
 });
 
-/** Body de PATCH /api/centros/:id (ADMIN): los mismos campos, todos opcionales. */
-export const actualizarCentroSchema = crearCentroSchema
+/**
+ * Body de POST /api/centros (ADMIN). El id lo genera la base.
+ *
+ * `camas`: las camas libres de cada tipo al dar de alta el centro (regla 7). Se
+ * crea una unidad por tipo. Si no se manda, todas empiezan en cero.
+ */
+export const crearCentroSchema = datosCentroSchema.extend({
+  camas: camasPorTipoSchema.default({ UTI: 0, UCO: 0, SALA_COMUN: 0, GUARDIA: 0 }),
+});
+
+/** Body de PATCH /api/centros/:id (ADMIN): los datos del centro, todos opcionales. Las camas se corrigen aparte. */
+export const actualizarCentroSchema = datosCentroSchema
   .partial()
   .refine((datos) => Object.keys(datos).length > 0, {
     message: "Hay que enviar al menos un campo para modificar",
   });
 
 /** Representación completa de un centro ya persistido. */
-export const centroSaludSchema = crearCentroSchema.extend({ id: idSchema });
+export const centroSaludSchema = datosCentroSchema.extend({ id: idSchema });
 
+export type DatosCentro = z.infer<typeof datosCentroSchema>;
 export type CrearCentro = z.infer<typeof crearCentroSchema>;
 export type ActualizarCentro = z.infer<typeof actualizarCentroSchema>;
 export type CentroSalud = z.infer<typeof centroSaludSchema>;

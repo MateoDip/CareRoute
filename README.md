@@ -116,6 +116,7 @@ Convención: sustantivos en plural; las operaciones del flujo que no son ABM se 
 | `POST /api/solicitudes/:id/destino` | Elige el destino (HU04) | Derivante del origen |
 | **`POST /api/solicitudes/:id/aprobacion`** | **Aprueba y reserva la cama (HU04)** | **Receptor del destino** |
 | `POST /api/solicitudes/:id/rechazo` | Cancela la derivación | Derivante o receptor, según estado |
+| `POST /api/solicitudes/:id/cambio-de-unidad`, `POST /api/solicitudes/:id/alta` | Pasa al paciente internado de unidad o le da el alta (regla 7) | Receptor del destino |
 | `POST /api/solicitudes/:id/inicio` | El paciente sale: pasa a `EN_CURSO` (HU07) | Derivante del origen |
 | `POST /api/solicitudes/:id/finalizacion` | El paciente llega: pasa a `FINALIZADA` (HU07) | Receptor del destino |
 | `GET /api/solicitudes/:id/bitacora` | Eventos del traslado (HU07) | Médicos del centro involucrado |

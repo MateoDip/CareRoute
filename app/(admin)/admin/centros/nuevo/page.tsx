@@ -26,12 +26,13 @@ export default async function NuevoCentro() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Nuevo centro de salud</h1>
         <p className="text-muted-foreground">
-          Las unidades y sus camas las carga después el médico receptor de ese centro.
+          Cargá las camas libres que tiene hoy cada unidad. Después cambian solas con las
+          derivaciones, y el médico receptor del centro las puede corregir.
         </p>
       </div>
       <Card>
         <CardContent>
-          <FormularioCentro accion={crearCentroAction} texto="Crear centro" textoPendiente="Creando…" />
+          <FormularioCentro accion={crearCentroAction} texto="Crear centro" textoPendiente="Creando…" conCamas />
         </CardContent>
       </Card>
     </div>

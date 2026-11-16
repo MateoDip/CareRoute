@@ -97,6 +97,18 @@ const CONTRATO: Record<string, Caso[]> = {
     { quien: "sinCentro", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/finalizacion", status: 403, porque: "sin centro no recibe pacientes" },
     { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/finalizacion", status: 404, porque: "no finaliza traslados que no van a su centro" },
   ],
+  "POST /api/solicitudes/:id/alta — MEDICO_RECEPTOR del destino": [
+    { quien: "sinSesion", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/alta", status: 401, porque: "sin sesión" },
+    { quien: "derivante", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/alta", status: 403, porque: "el alta la da el centro donde está internado (regla 7)" },
+    { quien: "admin", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/alta", status: 403, porque: "el admin no participa del flujo clínico" },
+    { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/alta", status: 404, porque: "no da el alta en otro centro" },
+  ],
+  "POST /api/solicitudes/:id/cambio-de-unidad — MEDICO_RECEPTOR del destino": [
+    { quien: "sinSesion", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/cambio-de-unidad", body: { tipo: "SALA_COMUN" }, status: 401, porque: "sin sesión" },
+    { quien: "derivante", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/cambio-de-unidad", body: { tipo: "SALA_COMUN" }, status: 403, porque: "el pase de unidad lo hace el centro donde está internado (regla 7)" },
+    { quien: "admin", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/cambio-de-unidad", body: { tipo: "SALA_COMUN" }, status: 403, porque: "el admin no participa del flujo clínico" },
+    { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/cambio-de-unidad", body: { tipo: "SALA_COMUN" }, status: 404, porque: "no pasa de unidad a pacientes de otro centro" },
+  ],
   "GET /api/solicitudes/:id/bitacora — médico del origen o destino": [
     { quien: "receptor", metodo: "GET", ruta: "/api/solicitudes/solicitud-ajena-1/bitacora", status: 404, porque: "no lee la bitácora de otro centro" },
   ],
@@ -231,6 +243,15 @@ test.describe("Pantallas — misma autorización que la API", () => {
       await expect(pagina).toHaveURL(/\/admin$/);
       await expect(pagina.getByText("99.000")).toHaveCount(0);
     }
+    await contexto.close();
+  });
+
+  test("la pantalla de camas es del receptor: el derivante no la tiene (HU05)", async ({ browser }) => {
+    const contexto = await browser.newContext({ storageState: sesionDe("derivante") });
+    const pagina = await contexto.newPage();
+    await pagina.goto("/camas");
+    await expect(pagina.getByRole("heading", { name: "No encontramos esa solicitud" })).toBeVisible();
+    await expect(pagina.getByLabel("UTI")).toHaveCount(0);
     await contexto.close();
   });
 

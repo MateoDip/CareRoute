@@ -14,15 +14,16 @@ import { sesionDe } from "./sesiones";
  * una computadora. Se busca como busca una persona: por rol, etiqueta y texto.
  * Eso también comprueba la accesibilidad (htmlFor, legend, nombres de botones).
  *
- * Casos de error en el medio: el DNI vacío (HU01) y la IA que no responde (HU02,
- * spec §8): .env.e2e apunta OpenAI a una ruta que no existe.
+ * Casos de error en el medio: el DNI vacío (HU01), la IA que no responde (HU02,
+ * spec §8): .env.e2e apunta OpenAI a una ruta que no existe, y el pase a una
+ * unidad sin camas (regla 7): el Centenario no tiene guardia.
  */
 
 const DNI = "30123456";
 const DNI_EN_PANTALLA = "DNI 30.123.456";
 const DESTINO = "Hospital Provincial del Centenario";
 
-test("flujo principal: del DNI del paciente a su llegada al centro de destino", async ({ browser }) => {
+test("flujo principal: del DNI del paciente a su alta en el centro de destino", async ({ browser }) => {
   const telefono = await browser.newContext({
     ...devices["Pixel 7"],
     storageState: sesionDe("derivante"),
@@ -131,9 +132,36 @@ test("flujo principal: del DNI del paciente a su llegada al centro de destino", 
     await receptor.getByRole("button", { name: "Marcar llegada del paciente" }).click();
     await receptor.getByRole("button", { name: "Sí, marcar llegada del paciente" }).click();
 
-    await expect(receptor.getByText("El traslado terminó")).toBeVisible();
     await expect(receptor.getByText("Llegó al centro de destino")).toBeVisible();
     await expect(receptor.getByRole("button", { name: "Marcar llegada del paciente" })).toHaveCount(0);
+    // Regla 7: queda internado en la cama que se reservó al aprobar (UTI, por ser crítico).
+    await expect(receptor.getByText("El paciente está internado en UTI")).toBeVisible();
+  });
+
+  await test.step("9. el receptor lo pasa a sala común; a guardia no, porque no hay camas (regla 7)", async () => {
+    // Caso de error: el Centenario no tiene camas de guardia → no se mueve nada.
+    await receptor.getByLabel("Pasar a la unidad").selectOption({ label: "Guardia" });
+    await receptor.getByRole("button", { name: "Pasar a otra unidad" }).click();
+    await expect(receptor.getByRole("alert").filter({ hasText: "No se pudo guardar" })).toContainText(
+      "Capacidad agotada",
+    );
+    await expect(receptor.getByText("El paciente está internado en UTI")).toBeVisible();
+
+    await receptor.getByLabel("Pasar a la unidad").selectOption({ label: "Sala común" });
+    await receptor.getByRole("button", { name: "Pasar a otra unidad" }).click();
+
+    await expect(receptor.getByText("El paciente está internado en Sala común")).toBeVisible();
+    await expect(receptor.getByText("Pasó a otra unidad")).toBeVisible();
+    await expect(receptor.getByText("De UTI a Sala común")).toBeVisible();
+  });
+
+  await test.step("10. el receptor le da el alta: la cama vuelve a quedar libre (regla 7)", async () => {
+    await receptor.getByRole("button", { name: "Dar de alta" }).click();
+    await receptor.getByRole("button", { name: "Sí, dar de alta" }).click();
+
+    await expect(receptor.getByText("Alta del paciente")).toBeVisible();
+    await expect(receptor.getByText("El traslado terminó. No hay nada pendiente.")).toBeVisible();
+    await expect(receptor.getByRole("button", { name: "Dar de alta" })).toHaveCount(0);
   });
 
   await telefono.close();

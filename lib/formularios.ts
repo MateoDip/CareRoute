@@ -78,3 +78,16 @@ export function estadoDeValidacion(error: ZodError, formData: FormData): EstadoF
 export function estadoDeRechazo(rechazo: Rechazo, formData: FormData): EstadoFormulario {
   return { error: rechazo.mensaje, valores: valoresDe(formData) };
 }
+
+/**
+ * Las camas de cada tipo de un formulario (CamposCamas: un campo por tipo),
+ * para pasarlas a `camasPorTipoSchema`. Vacío → undefined, texto → NaN.
+ */
+export function camasDe(formData: FormData) {
+  return {
+    UTI: numeroDe(formData, "UTI"),
+    UCO: numeroDe(formData, "UCO"),
+    SALA_COMUN: numeroDe(formData, "SALA_COMUN"),
+    GUARDIA: numeroDe(formData, "GUARDIA"),
+  };
+}

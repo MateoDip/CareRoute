@@ -1,4 +1,5 @@
-import type { EstadoSolicitud, RolUsuario } from "@prisma/client";
+import type { EstadoSolicitud, RolUsuario, TipoUnidad } from "@prisma/client";
+import { ETIQUETA_UNIDAD } from "./formato";
 import { rolesQuePuedenRechazar } from "./reglas-solicitud";
 
 export type ProximoPaso = {
@@ -10,6 +11,10 @@ export type ProximoPaso = {
   iniciarTraslado: boolean;
   /** El destino marca que el paciente llegó (EN_CURSO → FINALIZADA, ADR 0011). */
   finalizarTraslado: boolean;
+  /** El destino da el alta al paciente internado: libera su cama (regla 7). */
+  darDeAlta: boolean;
+  /** El destino pasa al paciente internado a otra unidad (regla 7). */
+  cambiarDeUnidad: boolean;
   /** Qué está pasando cuando no hay nada para hacer desde este lado. */
   aviso: string | null;
 };
@@ -28,8 +33,13 @@ export function proximoPaso(params: {
   esOrigen: boolean;
   esDestino: boolean;
   tieneDestino: boolean;
+  /**
+   * En qué unidad del destino está internado el paciente: solo con la
+   * derivación FINALIZADA y sin alta (regla 7, `estaInternado`). Si no, null.
+   */
+  internadoEn?: TipoUnidad | null;
 }): ProximoPaso {
-  const { rol, estado, esOrigen, esDestino, tieneDestino } = params;
+  const { rol, estado, esOrigen, esDestino, tieneDestino, internadoEn = null } = params;
   const derivante = rol === "MEDICO_DERIVANTE" && esOrigen;
   const receptor = rol === "MEDICO_RECEPTOR" && esDestino;
 
@@ -40,11 +50,17 @@ export function proximoPaso(params: {
     rechazar: (derivante || receptor) && rolesQuePuedenRechazar(estado).includes(rol),
     iniciarTraslado: derivante && estado === "APROBADA",
     finalizarTraslado: receptor && estado === "EN_CURSO",
+    darDeAlta: receptor && estado === "FINALIZADA" && internadoEn !== null,
+    cambiarDeUnidad: receptor && estado === "FINALIZADA" && internadoEn !== null,
     aviso: null,
   };
 
   if (estado === "RECHAZADA") paso.aviso = "La derivación fue rechazada. No hay nada pendiente.";
-  else if (estado === "FINALIZADA") paso.aviso = "El traslado terminó. No hay nada pendiente.";
+  else if (estado === "FINALIZADA" && internadoEn !== null && receptor) {
+    paso.aviso = `El paciente está internado en ${ETIQUETA_UNIDAD[internadoEn]}. Si lo pasás a otra unidad o le das el alta, la cama que ocupa vuelve a quedar libre.`;
+  } else if (estado === "FINALIZADA" && internadoEn !== null) {
+    paso.aviso = "El traslado terminó. El paciente está internado en el centro de destino.";
+  } else if (estado === "FINALIZADA") paso.aviso = "El traslado terminó. No hay nada pendiente.";
   else if (derivante && estado === "EN_CURSO") {
     paso.aviso = "El paciente está en camino. El centro de destino marca la llegada.";
   } else if (receptor && estado === "EN_CURSO") {

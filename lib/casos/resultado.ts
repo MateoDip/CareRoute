@@ -23,6 +23,7 @@ export type MotivoDeRechazo =
   | "DERIVACION_ABIERTA"
   | "AUTO_DEGRADACION"
   | "CENTRO_CON_DEPENDENCIAS"
+  | "MISMA_UNIDAD"
   | "IA_NO_DISPONIBLE";
 
 /**
