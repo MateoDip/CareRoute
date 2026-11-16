@@ -24,6 +24,8 @@ endpoint público es `GET /auth/callback`, que es el que crea la sesión.
 | POST | `/api/solicitudes/:id/destino` | El derivante elige del ranking el centro de destino | HU04 | MEDICO_DERIVANTE del origen | 400 · 401 · 403 · 404 · 409 estado, mismo centro o sin cama |
 | **POST** | **`/api/solicitudes/:id/aprobacion`** | **El receptor confirma: reserva la cama, pasa a `APROBADA` y registra fecha y hora** | **HU04** | **MEDICO_RECEPTOR del destino** | **401 · 403 · 404 · 409 estado o sin cama** |
 | POST | `/api/solicitudes/:id/rechazo` | Cancela la derivación. Si estaba `APROBADA`, devuelve la cama | spec §6 | Derivante (origen) o receptor (destino); una `APROBADA`, solo el receptor | 401 · 403 · 404 · 409 |
+| POST | `/api/solicitudes/:id/inicio` | El paciente sale del origen: `APROBADA` → `EN_CURSO` y "Paciente a bordo" en la bitácora | HU07 | MEDICO_DERIVANTE del origen | 401 · 403 · 404 · 409 estado |
+| POST | `/api/solicitudes/:id/finalizacion` | El paciente llega al destino: `EN_CURSO` → `FINALIZADA`, "Llegó al centro de destino" en la bitácora y la derivación se cierra | HU07 | MEDICO_RECEPTOR del destino | 401 · 403 · 404 · 409 estado |
 | GET | `/api/solicitudes/:id/bitacora` | Historial de eventos del traslado | HU07 | Médico del origen o destino | 401 · 403 · 404 |
 | GET | `/api/centros` | Catálogo de centros con unidades y recursos | HU05 | Cualquier usuario logueado | 401 |
 | POST | `/api/centros` | Alta de un centro | spec §2 | ADMIN | 400 · 401 · 403 |
@@ -57,6 +59,8 @@ primera línea del handler (rol → 401/403) y el centro de la sesión en el `wh
 | `POST /api/solicitudes/:id/destino` | ✗ 403 | ✓ solo origen, si no 404 | ✗ 403 | 401 |
 | `POST /api/solicitudes/:id/aprobacion` | ✗ 403 | ✗ 403 | ✓ solo destino, si no 404 | 401 |
 | `POST /api/solicitudes/:id/rechazo` | ✗ 403 | ✓ desde el origen, salvo `APROBADA` (403) | ✓ desde el destino | 401 |
+| `POST /api/solicitudes/:id/inicio` | ✗ 403 | ✓ solo origen, si no 404 | ✗ 403 | 401 |
+| `POST /api/solicitudes/:id/finalizacion` | ✗ 403 | ✗ 403 | ✓ solo destino, si no 404 | 401 |
 | `GET /api/centros`, `GET /api/centros/:id` | ✓ | ✓ | ✓ | 401 |
 | `POST/PATCH/DELETE /api/centros…` | ✓ | ✗ 403 | ✗ 403 | 401 |
 | `PATCH /api/unidades/:id` | ✓ cualquier centro | ✗ 403 | ✓ solo su centro, si no 404 | 401 |
@@ -110,6 +114,14 @@ centro lo ve en `GET /api/solicitudes?rol=destino&estado=EVALUANDO` y aprueba
 (`POST /aprobacion`). Así cada receptor solo ve las derivaciones que le propusieron: nadie
 ve las solicitudes de pacientes de otros hospitales "por si acaso".
 
+### Quién marca la salida y la llegada (ADR 0011)
+
+Cada centro marca lo que ve con sus ojos: el derivante, que el paciente salió
+(`POST /inicio`); el receptor, que llegó (`POST /finalizacion`). Si un solo centro marcara
+las dos cosas, estaría dando fe de algo que pasó en otro hospital. Por eso cada endpoint
+exige un solo rol (403 para el otro) y busca la solicitud desde un solo lado (404 si la
+solicitud no sale o no llega a su centro).
+
 ### Qué campos acepta `POST /api/solicitudes`
 
 Solo `pacienteDni`. El resto:
@@ -154,17 +166,22 @@ En Zod se expresa con `.partial()`.
 ```
 PENDIENTE ──POST /evaluacion──> EVALUANDO ──POST /aprobacion──> APROBADA
     │                            │  ▲   │                           │
-    │                            │  └───┘ POST /destino             │
-    │                            │   (elige o cambia destino)       ▼
+    │                            │  └───┘ POST /destino             │ POST /inicio
+    │                            │   (elige o cambia destino)       ▼ (origen)
     └── PATCH solo acá           └──────> RECHAZADA              EN_CURSO
                                                                     │
-                                                                    ▼
+                                                                    │ POST /finalizacion
+                                                                    ▼ (destino)
                                                                FINALIZADA
 ```
 
 `RECHAZADA` se alcanza con `POST /rechazo` desde `PENDIENTE`, `EVALUANDO` o `APROBADA`.
-Las transiciones a `EN_CURSO` y `FINALIZADA` son parte del seguimiento del traslado, que
-todavía no tiene endpoints: ver [ADR 0002](./adr/0002-reglas-que-esperan-una-migracion.md).
+El seguimiento del traslado (HU07) lo marcan los dos centros, cada uno lo que ve
+([ADR 0011](./adr/0011-quien-marca-el-traslado.md)): el **origen** marca la salida del
+paciente (`POST /inicio`, `APROBADA` → `EN_CURSO`) y el **destino**, su llegada
+(`POST /finalizacion`, `EN_CURSO` → `FINALIZADA`). Cada transición deja su evento en la
+bitácora en la misma transacción. Desde `EN_CURSO` ya no se puede rechazar, y
+`FINALIZADA` cierra la derivación: el paciente se puede volver a derivar (regla 6).
 
 La tabla de transiciones vive una sola vez, en `lib/reglas-solicitud.ts`. Los handlers le
 preguntan; no tienen listas de estados propias.
@@ -218,6 +235,8 @@ indica quién agarra el error. Cada fila tiene su request en `docs/api.http`.
 | `POST /api/solicitudes/:id/aprobacion` | El estado no admite la aprobación (ya aprobada, rechazada) | 409 | regla | "La solicitud no puede aprobarse en este estado" + `estadoActual` + `transicionesPosibles` |
 | `POST /api/solicitudes/:id/rechazo` | Lo intenta el derivante sobre una `APROBADA` (spec §6) | 403 | regla | "Una solicitud aprobada solo puede rechazarla el centro receptor" + `rolesHabilitados` |
 | `POST /api/solicitudes/:id/rechazo` | La solicitud ya está `RECHAZADA`, `EN_CURSO` o `FINALIZADA` | 409 | regla | "La solicitud no puede rechazarse en este estado" + `estadoActual` + `transicionesPosibles` |
+| `POST /api/solicitudes/:id/inicio` | La solicitud no está `APROBADA` (todavía no la aprobó el destino, o ya salió) | 409 | regla | "El traslado solo puede iniciarse cuando el destino aprobó la derivación" + `estadoActual` + `transicionesPosibles` |
+| `POST /api/solicitudes/:id/finalizacion` | La solicitud no está `EN_CURSO` (el paciente todavía no salió, o ya llegó) | 409 | regla | "El traslado solo puede finalizarse si está en curso" + `estadoActual` + `transicionesPosibles` |
 | cualquier escritura condicional | Otro usuario cambió el estado mientras se procesaba | 409 | base | "La solicitud cambió de estado mientras se procesaba" |
 | `PATCH /api/unidades/:id` | Camas negativas (HU05) | 400 | Zod | "Datos inválidos" + `detalles` |
 | `DELETE /api/centros/:id` | El centro tiene usuarios o derivaciones (spec §3, `Restrict`) | 409 | regla | "No se puede dar de baja un centro con usuarios o derivaciones…" + `dependencias` |

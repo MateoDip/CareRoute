@@ -1,6 +1,7 @@
 import {
   Prisma,
   type EstadoSolicitud,
+  type EventoBitacora,
   type OrigenNivelUrgencia,
   type TipoUnidad,
 } from "@prisma/client";
@@ -26,8 +27,8 @@ import type { EvaluacionAGuardar } from "@/lib/schemas/evaluacion-triaje";
  *    medio, no se pisa nada y se devuelve null.
  *  - Regla 6 (clase 14): `pacienteDniActivo` lleva el DNI mientras la derivación
  *    está abierta y null cuando se cierra. Lo escriben solo las funciones de este
- *    archivo: al crear, al corregir el DNI y al rechazar. Una transición nueva a
- *    FINALIZADA también tiene que ponerlo en null.
+ *    archivo: al crear, al corregir el DNI, al rechazar y al finalizar el
+ *    traslado.
  */
 
 const LIMITE_LISTADO = 50;
@@ -376,6 +377,49 @@ export async function rechazarSolicitud(params: {
         });
       }
     }
+
+    return tx.solicitudTraslado.findUnique({
+      where: { id: solicitudId },
+      select: camposSolicitud,
+    });
+  });
+}
+
+/**
+ * Seguimiento del traslado (HU07, ADR 0011): APROBADA → EN_CURSO cuando el
+ * paciente sale del origen, y EN_CURSO → FINALIZADA cuando llega al destino.
+ * Qué transición corresponde y quién puede hacerla lo decide el caso de uso.
+ *
+ * El cambio de estado y el evento de bitácora van juntos o no va ninguno: un
+ * traslado EN_CURSO sin "Paciente a bordo" en la bitácora sería un historial
+ * que no cuenta lo que pasó. Igual que en el rechazo, el cambio es condicional
+ * al estado que leyó el caso: si en el medio otro usuario la cambió, no se toca
+ * nada y se devuelve null.
+ *
+ * Al finalizar se cierra la derivación (regla 6): pacienteDniActivo vuelve a
+ * null y el paciente se puede derivar de nuevo desde su centro.
+ */
+export async function avanzarTraslado(params: {
+  solicitudId: string;
+  estadoLeido: EstadoSolicitud;
+  nuevoEstado: "EN_CURSO" | "FINALIZADA";
+  evento: EventoBitacora;
+}) {
+  const { solicitudId, estadoLeido, nuevoEstado, evento } = params;
+
+  return prisma.$transaction(async (tx) => {
+    const cambio = await tx.solicitudTraslado.updateMany({
+      where: { id: solicitudId, estado: estadoLeido },
+      data:
+        nuevoEstado === "FINALIZADA"
+          ? { estado: nuevoEstado, pacienteDniActivo: null }
+          : { estado: nuevoEstado },
+    });
+    if (cambio.count === 0) return null;
+
+    await tx.registroBitacora.create({
+      data: { solicitudId, evento },
+    });
 
     return tx.solicitudTraslado.findUnique({
       where: { id: solicitudId },

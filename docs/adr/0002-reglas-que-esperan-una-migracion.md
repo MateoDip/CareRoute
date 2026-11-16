@@ -55,3 +55,12 @@ propio PR y su propia migración versionada.
   **corrección posterior** de un nivel ya sugerido (guardar sugerido y confirmado por
   separado), que necesita un endpoint nuevo.
 - Siguen pendientes: equipamiento requerido por solicitud y coordenadas de los centros.
+
+## Revisión 2026-11-16
+
+- Las transiciones a `EN_CURSO` y `FINALIZADA` ya tienen endpoints (`POST /inicio` y
+  `POST /finalizacion`) y botones en la ficha, y cada una registra su evento en la
+  bitácora. Quién marca cada una quedó decidido en el ADR 0011. No hizo falta migración:
+  el modelo ya tenía los estados y la tabla `RegistroBitacora`.
+- Sigue pendiente registrar en la bitácora los eventos intermedios del traslado (salida de
+  la base, llegada al origen, complicaciones), que dependen de la tripulación.

@@ -85,6 +85,18 @@ const CONTRATO: Record<string, Caso[]> = {
     { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/rechazo", status: 404, porque: "no rechaza solicitudes ajenas" },
     { quien: "admin", metodo: "POST", ruta: "/api/solicitudes/solicitud-propuesta-1/rechazo", status: 403, porque: "el admin no rechaza derivaciones" },
   ],
+  "POST /api/solicitudes/:id/inicio — MEDICO_DERIVANTE del origen": [
+    { quien: "sinSesion", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/inicio", status: 401, porque: "sin sesión" },
+    { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/inicio", status: 403, porque: "la salida del paciente la marca el origen (ADR 0011)" },
+    { quien: "admin", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/inicio", status: 403, porque: "el admin no participa del traslado" },
+    { quien: "derivante", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/inicio", status: 404, porque: "no inicia traslados de otro centro" },
+  ],
+  "POST /api/solicitudes/:id/finalizacion — MEDICO_RECEPTOR del destino": [
+    { quien: "sinSesion", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/finalizacion", status: 401, porque: "sin sesión" },
+    { quien: "derivante", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/finalizacion", status: 403, porque: "la llegada del paciente la marca el destino (ADR 0011)" },
+    { quien: "sinCentro", metodo: "POST", ruta: "/api/solicitudes/solicitud-ok-1/finalizacion", status: 403, porque: "sin centro no recibe pacientes" },
+    { quien: "receptor", metodo: "POST", ruta: "/api/solicitudes/solicitud-ajena-1/finalizacion", status: 404, porque: "no finaliza traslados que no van a su centro" },
+  ],
   "GET /api/solicitudes/:id/bitacora — médico del origen o destino": [
     { quien: "receptor", metodo: "GET", ruta: "/api/solicitudes/solicitud-ajena-1/bitacora", status: 404, porque: "no lee la bitácora de otro centro" },
   ],
