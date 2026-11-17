@@ -176,6 +176,13 @@ PENDIENTE ──POST /evaluacion──> EVALUANDO ──POST /aprobacion──> 
                                                                     │ POST /finalizacion
                                                                     ▼ (destino)
                                                                FINALIZADA
+                                                         (internado en la cama reservada)
+                                                                │  ▲   │
+                                       POST /cambio-de-unidad   │  └───┘ (otra unidad,
+                                                     (destino)  │         misma derivación)
+                                                                ▼ POST /alta (destino)
+                                                     FINALIZADA con fechaAlta:
+                                                     la cama vuelve a quedar libre
 ```
 
 `RECHAZADA` se alcanza con `POST /rechazo` desde `PENDIENTE`, `EVALUANDO` o `APROBADA`.

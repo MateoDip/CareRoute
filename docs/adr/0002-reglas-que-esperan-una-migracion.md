@@ -64,3 +64,19 @@ propio PR y su propia migración versionada.
   el modelo ya tenía los estados y la tabla `RegistroBitacora`.
 - Sigue pendiente registrar en la bitácora los eventos intermedios del traslado (salida de
   la base, llegada al origen, complicaciones), que dependen de la tripulación.
+
+## Revisión 2026-11-17
+
+- La migración `20261116200000_cama_ocupada_alta_y_pase_de_unidad` sumó la cama que ocupa
+  cada derivación, el alta y el pase de unidad (regla 7, ADR 0012). No resuelve ninguna de
+  las tres reglas de esta lista: es una regla nueva.
+- Siguen pendientes, y quedan para después del Parcial II:
+  - **Coordenadas de los centros** (latitud y longitud): son la base de la distancia en el
+    ranking (HU03) y de un mapa con los centros y el traslado. La spec §1 promete "cercanía"
+    y todavía no está.
+  - **Equipamiento requerido por solicitud** (HU04).
+  - **Corrección posterior del nivel de urgencia** (regla 2): guardar sugerido y confirmado
+    por separado.
+  - **Eventos intermedios de la bitácora** (salida de la base, llegada al origen,
+    complicaciones), que dependen de asignar tripulación.
+

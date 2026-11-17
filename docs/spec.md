@@ -28,9 +28,9 @@ Los sustantivos que aparecen en las historias de usuario. De acá sale el modelo
 | Entidad | Qué representa | Se relaciona con |
 |---|---|---|
 | **CentroSalud** | Establecimiento médico con su nivel de complejidad y ubicación. | Usuario, UnidadCuidados, RecursoEspecializado, SolicitudTraslado |
-| **UnidadCuidados** | Área de internación (UTI, UCO, sala común, guardia) y sus camas libres. | CentroSalud |
+| **UnidadCuidados** | Área de internación (UTI, UCO, sala común, guardia) y sus camas libres. Una por tipo en cada centro. | CentroSalud, SolicitudTraslado (los pacientes que ocupan una cama) |
 | **RecursoEspecializado** | Equipamiento puntual (respirador, monitor…) y su estado operativo. | CentroSalud |
-| **SolicitudTraslado** | La derivación: vincula al centro de origen con el de destino y lleva el estado. El paciente se identifica por DNI dentro de la solicitud (no hay entidad Paciente: los datos clínicos son del episodio, no de la persona). | CentroSalud (origen y destino), EvaluacionTriaje, AsignacionTripulacion, RegistroBitacora |
+| **SolicitudTraslado** | La derivación: vincula al centro de origen con el de destino y lleva el estado. El paciente se identifica por DNI dentro de la solicitud (no hay entidad Paciente: los datos clínicos son del episodio, no de la persona). | CentroSalud (origen y destino), UnidadCuidados (la cama reservada u ocupada, regla 7), EvaluacionTriaje, AsignacionTripulacion, RegistroBitacora |
 | **EvaluacionTriaje** | Signos vitales, nivel de urgencia y de dónde salió ese nivel (IA o manual). | SolicitudTraslado |
 | **TripulacionMedica** | Ambulancia y paramédico responsable. Hace muchos traslados. | AsignacionTripulacion, RegistroBitacora |
 | **AsignacionTripulacion** | Qué tripulación se asignó a qué traslado y cuándo. Es la tabla intermedia de la N-N. | SolicitudTraslado, TripulacionMedica |
@@ -53,12 +53,14 @@ cumple el papel de `creadaEn`).
 | CentroSalud → SolicitudTraslado (origen) | 1 a N | `Restrict` | El historial de derivaciones es inmutable. |
 | CentroSalud → SolicitudTraslado (destino) | 1 a N (el destino es opcional hasta que se elige) | `Restrict` | Ídem. |
 | SolicitudTraslado → EvaluacionTriaje | 1 a 1 (opcional) | `Cascade` | Sin la solicitud, sus signos vitales pierden sentido. |
+| UnidadCuidados → SolicitudTraslado (cama ocupada) | 1 a N (opcional: null hasta aprobar y después del alta) | `Restrict` | Regla 7: no se borra una unidad con un paciente que ocupa una de sus camas. |
 | **SolicitudTraslado ↔ TripulacionMedica** | **N a N**, vía `AsignacionTripulacion` | `Restrict` en los dos lados | Una tripulación hace muchos traslados y un traslado largo puede necesitar más de una (relevo). La intermedia es entidad porque tiene dato propio: `asignadaEn`. Nunca se borra un viaje realizado. |
 | SolicitudTraslado → RegistroBitacora | 1 a N | `Restrict` | Log de auditoría: no se borra nunca. |
 | TripulacionMedica → RegistroBitacora | 1 a N (opcional) | `Restrict` | Ídem. |
 
 Índices: toda FK por la que se filtra tiene `@@index` (`centroSaludId`, `centroOrigenId`,
-`centroDestinoId`, `solicitudId`, `tripulacionMedicaId`). La clave compuesta de
+`centroDestinoId`, `solicitudId`, `tripulacionMedicaId`, `unidadOcupadaId`). `UnidadCuidados`
+tiene el índice único `(centroSaludId, tipo)`: una unidad por tipo en cada centro (regla 7). La clave compuesta de
 `AsignacionTripulacion` ya indexa `solicitudId`. `SolicitudTraslado` tiene además el índice
 único `(centroOrigenId, pacienteDniActivo)` de la regla 6. Las mediciones con 50.000
 solicitudes están en [`docs/rendimiento.md`](./rendimiento.md).
