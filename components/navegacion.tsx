@@ -15,7 +15,8 @@ type Props = { nombre: string; rol: RolUsuario };
 /**
  * Barra de navegación de las pantallas con sesión (clase 10). Siempre igual y
  * en el mismo lugar: marca (vuelve al inicio), acceso a las entrantes (criterio
- * "Recuerdo" de la spec §7), nueva solicitud para el derivante, quién está
+ * "Recuerdo" de la spec §7), las camas de su centro para el receptor (HU05),
+ * nueva solicitud para el derivante, quién está
  * usando el sistema con qué rol, y Salir.
  *
  * En el teléfono va en dos filas: arriba la marca y la sesión, abajo las
@@ -26,7 +27,10 @@ type Props = { nombre: string; rol: RolUsuario };
  */
 export function Navegacion({ nombre, rol }: Props) {
   const enlaces = (
-    <EnlaceNavegacion href="/?rol=destino">Entrantes</EnlaceNavegacion>
+    <>
+      <EnlaceNavegacion href="/?rol=destino">Entrantes</EnlaceNavegacion>
+      {rol === "MEDICO_RECEPTOR" && <EnlaceNavegacion href="/camas">Camas</EnlaceNavegacion>}
+    </>
   );
 
   return (

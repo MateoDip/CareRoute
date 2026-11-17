@@ -89,6 +89,8 @@ export const ETIQUETA_EVENTO: Record<EventoBitacora, string> = {
   PACIENTE_A_BORDO: "Paciente a bordo",
   LLEGADA_DESTINO: "Llegó al centro de destino",
   COMPLICACION_CLINICA: "Complicación clínica",
+  CAMBIO_DE_UNIDAD: "Pasó a otra unidad",
+  ALTA_DEL_PACIENTE: "Alta del paciente",
 };
 
 export const ETIQUETA_COMPLEJIDAD: Record<NivelComplejidad, string> = {

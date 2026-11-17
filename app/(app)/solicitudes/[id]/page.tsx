@@ -19,17 +19,22 @@ import {
   ETIQUETA_EVENTO,
   ETIQUETA_NIVEL,
   ETIQUETA_TRIPULACION,
+  ETIQUETA_UNIDAD,
   formatearDni,
   formatearFechaHora,
 } from "@/lib/formato";
 import { proximoPaso } from "@/lib/proximo-paso";
+import { estaInternado } from "@/lib/reglas-internacion";
 import { cn } from "@/lib/utils";
 import {
   aprobarAction,
+  cambiarDeUnidadAction,
+  darDeAltaAction,
   finalizarTrasladoAction,
   iniciarTrasladoAction,
   rechazarAction,
 } from "./acciones";
+import { FormularioCambioDeUnidad } from "./formulario-unidad";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -54,6 +59,15 @@ export default async function DetalleSolicitud({ params }: Props) {
   // depende de la primera consulta, así que no va en un Promise.all.
   const bitacora = await listarBitacora(solicitud.id);
   const triaje = solicitud.evaluacionTriaje;
+  // Regla 7: la cama que ocupa el paciente en el destino (reservada o internado).
+  const tipoOcupado = solicitud.unidadOcupada?.tipo ?? null;
+  const internadoEn = estaInternado({
+    estado: solicitud.estado,
+    tipoOcupado,
+    fechaAlta: solicitud.fechaAlta,
+  })
+    ? tipoOcupado
+    : null;
 
   // Qué botones ve este médico: experiencia de uso. Cada acción vuelve a
   // verificar rol, lado y estado en su caso de uso.
@@ -63,6 +77,7 @@ export default async function DetalleSolicitud({ params }: Props) {
     esOrigen: solicitud.centroOrigenId === usuario.centroSaludId,
     esDestino: solicitud.centroDestinoId === usuario.centroSaludId,
     tieneDestino: solicitud.centroDestinoId !== null,
+    internadoEn,
   });
   const hayAcciones =
     paso.cargarTriaje ||
@@ -70,7 +85,9 @@ export default async function DetalleSolicitud({ params }: Props) {
     paso.aprobar ||
     paso.rechazar ||
     paso.iniciarTraslado ||
-    paso.finalizarTraslado;
+    paso.finalizarTraslado ||
+    paso.darDeAlta ||
+    paso.cambiarDeUnidad;
 
   return (
     <div className="flex flex-col gap-6">
@@ -136,7 +153,7 @@ export default async function DetalleSolicitud({ params }: Props) {
             )}
           </div>
         )}
-        {(paso.aprobar || paso.rechazar || paso.iniciarTraslado || paso.finalizarTraslado) && (
+        {(paso.aprobar || paso.rechazar || paso.iniciarTraslado || paso.finalizarTraslado || paso.darDeAlta) && (
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
             {paso.iniciarTraslado && (
               <BotonAccion
@@ -152,6 +169,14 @@ export default async function DetalleSolicitud({ params }: Props) {
                 texto="Marcar llegada del paciente"
                 textoPendiente="Finalizando…"
                 confirmacion="Confirmá que el paciente llegó a tu centro. El traslado queda finalizado y no se puede deshacer."
+              />
+            )}
+            {paso.darDeAlta && (
+              <BotonAccion
+                accion={darDeAltaAction.bind(null, solicitud.id)}
+                texto="Dar de alta"
+                textoPendiente="Dando de alta…"
+                confirmacion="Confirmá el alta del paciente. Su cama vuelve a quedar libre y no se puede deshacer."
               />
             )}
             {paso.aprobar && (
@@ -175,6 +200,12 @@ export default async function DetalleSolicitud({ params }: Props) {
               />
             )}
           </div>
+        )}
+        {paso.cambiarDeUnidad && internadoEn && (
+          <FormularioCambioDeUnidad
+            accion={cambiarDeUnidadAction.bind(null, solicitud.id)}
+            tipoActual={internadoEn}
+          />
         )}
       </section>
 
@@ -232,6 +263,18 @@ export default async function DetalleSolicitud({ params }: Props) {
                   }
                 />
               </div>
+              {(tipoOcupado || solicitud.fechaAlta) && (
+                <Dato
+                  titulo={solicitud.estado === "FINALIZADA" ? "Internación" : "Cama reservada"}
+                  valor={
+                    solicitud.fechaAlta
+                      ? `Alta el ${formatearFechaHora(solicitud.fechaAlta)}`
+                      : tipoOcupado
+                        ? ETIQUETA_UNIDAD[tipoOcupado]
+                        : ""
+                  }
+                />
+              )}
             </dl>
           </CardContent>
         </Card>

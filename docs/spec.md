@@ -18,7 +18,7 @@ La matriz completa de permisos por endpoint está en [`docs/api.md`](./api.md#ma
 |---|---|---|
 | **Admin** | Encargado de configurar el sistema. | Da de alta, edita y da de baja `CentroSalud`, asigna rol y centro a cada `Usuario`, y puede corregir las camas de cualquier unidad. No participa del flujo clínico de derivaciones. |
 | **Médico Derivante** | Profesional en el hospital de origen con un paciente crítico. | Crea la `SolicitudTraslado`, registra la `EvaluacionTriaje` y elige el centro de destino del ranking. |
-| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Aprueba o rechaza las derivaciones que le propusieron y actualiza las camas de las `UnidadCuidados` de su `CentroSalud`. |
+| **Médico Receptor** | Profesional en el hospital de destino (ej. jefe de UTI). | Aprueba o rechaza las derivaciones que le propusieron, pasa de unidad y da el alta a los pacientes internados, y corrige las camas de las `UnidadCuidados` de su `CentroSalud`. |
 
 ## 3. Entidades
 
@@ -126,6 +126,7 @@ El recorrido que da valor al sistema (no un ABM):
 4. El derivante **elige el destino** del ranking (HU04).
 5. El **médico receptor** de ese centro la ve entre sus entrantes (HU06) y **la aprueba**: se reserva la cama, pasa a `APROBADA` y queda la fecha y hora (HU04).
 6. Se asigna una `TripulacionMedica` y el traslado se sigue por su estado y la bitácora (HU07): el **derivante** marca la salida del paciente (`EN_CURSO`) y el **receptor**, su llegada (`FINALIZADA`), que cierra la derivación.
+7. El paciente queda **internado** en la cama que se reservó al aprobar. El **receptor** puede pasarlo a otra unidad (por ejemplo, de UTI a sala común: libera una cama y ocupa otra) y le da el **alta**, que libera su cama (regla 7).
 
 Antes de `EN_CURSO`, cualquiera de los dos médicos puede rechazar la derivación, con la restricción de la regla 3 de la sección 6.
 
@@ -148,6 +149,9 @@ Una pantalla de otro rol responde 404, como una solicitud de otro centro.
 | 6. Seguir el traslado (HU07) | Ficha: triaje, tripulación y bitácora | `/solicitudes/:id` | Médico con centro, si su centro es origen o destino |
 | 6a. Marcar la salida (HU07) | Botón "Iniciar traslado" en "Qué sigue", con confirmación | `/solicitudes/:id` | Derivante del origen, con la solicitud `APROBADA` |
 | 6b. Marcar la llegada (HU07) | Botón "Marcar llegada del paciente" en "Qué sigue", con confirmación | `/solicitudes/:id` | Receptor del destino, con la solicitud `EN_CURSO` |
+| 7a. Pasar a otra unidad (regla 7) | Selector "Pasar a la unidad" y botón "Pasar a otra unidad" en "Qué sigue" | `/solicitudes/:id` | Receptor del destino, con el paciente internado (`FINALIZADA`, sin alta) |
+| 7b. Dar el alta (regla 7) | Botón "Dar de alta" en "Qué sigue", con confirmación | `/solicitudes/:id` | Ídem |
+| — | Corregir las camas libres de su centro (HU05) | `/camas` | Médico receptor |
 | — | Listado de solicitudes del centro, con filtro por estado | `/` | Médico con centro |
 | — | Galería del sistema visual | `/sistema` | Médico con centro |
 
@@ -161,12 +165,11 @@ pacientes (matriz de `docs/api.md`). Usa los mismos casos de uso que los endpoin
 | Ver los usuarios con su rol y centro | Listado de usuarios | `/admin/usuarios` | Admin |
 | Asignar rol y centro (regla 4: nadie se asigna un rol a sí mismo) | Formulario con dos selectores | `/admin/usuarios/:id` | Admin |
 | Ver los centros con sus camas libres | Listado de centros | `/admin/centros` | Admin |
-| Dar de alta un centro | Formulario | `/admin/centros/nuevo` | Admin |
-| Editar un centro o darlo de baja (regla 5) | Formulario y botón con confirmación | `/admin/centros/:id` | Admin |
+| Dar de alta un centro con sus camas libres de cada tipo (regla 7) | Formulario | `/admin/centros/nuevo` | Admin |
+| Editar un centro, corregir sus camas (HU05) o darlo de baja (regla 5) | Formularios y botón con confirmación | `/admin/centros/:id` | Admin |
 
 Sin pantalla todavía: asignar tripulación y registrar en la bitácora los eventos que no son la
-salida ni la llegada (por ejemplo, una complicación clínica), y actualizar la disponibilidad de
-camas (HU05, del receptor o del admin), que está en la API.
+salida, la llegada, el pase de unidad ni el alta (por ejemplo, una complicación clínica).
 
 ## 6. Reglas de negocio
 
@@ -178,6 +181,7 @@ Las restricciones que **no** son obvias y que la IA no puede adivinar. Estas son
 4. Un usuario que se registra con Google entra como médico derivante **sin centro** y no puede operar hasta que un admin le asigne centro (y, si corresponde, rol). Nadie puede asignarse un rol a sí mismo, y un admin no puede quitarse su propio rol.
 5. No se puede dar de baja un centro que tenga usuarios o derivaciones (el historial es inmutable).
 6. Un paciente (por DNI) no puede tener más de una derivación **abierta** (`PENDIENTE`, `EVALUANDO`, `APROBADA` o `EN_CURSO`) desde el mismo centro de origen: dos derivaciones del mismo paciente reservarían dos camas para una persona. Cuando la derivación se rechaza o finaliza, el paciente se puede volver a derivar. Es una regla de "uno solo" (clase 14): la cumple la base con un índice único, no un `if` (ADR 0010). El alcance es el centro de origen a propósito: un 409 por una derivación de otro hospital revelaría que ese paciente está siendo derivado allá.
+7. La cama sigue al paciente. Al dar de alta un centro, el admin carga las camas libres de cada tipo de unidad (una unidad por tipo). La cama se **reserva** al aprobar la derivación (HU04) y el paciente la **ocupa** cuando llega. Con el paciente internado (`FINALIZADA`, sin alta), el receptor del destino puede **pasarlo a otra unidad** de su centro: libera la cama que ocupa y toma una del tipo nuevo, todo o nada; si no queda cama de ese tipo, no se mueve nada ("Capacidad agotada"). El **alta** libera su cama, una sola vez. El receptor (su centro) y el admin (cualquiera) pueden corregir las camas a mano, por los pacientes que no llegan por CareRoute. El alta y el pase son reglas de "una sola vez": las cumple la base (ADR 0012).
 7. Cada centro marca lo que ve (ADR 0011): la salida del paciente (`APROBADA` → `EN_CURSO`) la marca solo el médico derivante del centro de origen, y la llegada (`EN_CURSO` → `FINALIZADA`) solo el médico receptor del centro de destino. Ninguno de los dos da fe de algo que pasó en otro hospital. Desde `EN_CURSO` la derivación ya no se puede rechazar: el paciente está en la ambulancia.
 
 ## 7. Requisitos no funcionales

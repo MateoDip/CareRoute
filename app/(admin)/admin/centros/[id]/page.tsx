@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BotonAccion } from "@/components/boton-accion";
+import { FormularioCamas } from "@/components/formulario-camas";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconoVolver } from "@/components/ui/iconos";
 import { requerirAdminEnPagina } from "@/lib/auth";
 import { obtenerCentro } from "@/lib/db/centros";
 import { cn } from "@/lib/utils";
-import { editarCentroAction, eliminarCentroAction } from "../acciones";
+import { editarCentroAction, eliminarCentroAction, fijarCamasAction } from "../acciones";
 import { FormularioCentro } from "../formulario";
 
 export const metadata: Metadata = { title: "Editar centro · CareRoute" };
@@ -49,6 +50,26 @@ export default async function EditarCentro({ params }: Props) {
               nivelComplejidad: centro.nivelComplejidad,
               ubicacion: centro.ubicacion,
             }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle as="h2" className="text-lg">
+            Camas libres
+          </CardTitle>
+          <CardDescription>
+            Cambian solas al aprobar derivaciones, al pasar pacientes de unidad y al darles el
+            alta. Corregilas acá si el hospital internó pacientes por fuera de CareRoute.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FormularioCamas
+            accion={fijarCamasAction.bind(null, centro.id)}
+            inicial={Object.fromEntries(
+              centro.unidadesCuidados.map((unidad) => [unidad.tipo, unidad.camasDisponibles]),
+            )}
           />
         </CardContent>
       </Card>

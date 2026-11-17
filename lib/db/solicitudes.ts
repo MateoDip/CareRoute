@@ -3,7 +3,6 @@ import {
   type EstadoSolicitud,
   type EventoBitacora,
   type OrigenNivelUrgencia,
-  type TipoUnidad,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
@@ -29,6 +28,9 @@ import type { EvaluacionAGuardar } from "@/lib/schemas/evaluacion-triaje";
  *    está abierta y null cuando se cierra. Lo escriben solo las funciones de este
  *    archivo: al crear, al corregir el DNI, al rechazar y al finalizar el
  *    traslado.
+ *  - Regla 7: `unidadOcupadaId` (la cama del paciente en el destino) cambia
+ *    siempre en la misma transacción que el contador de camas de esa unidad:
+ *    al aprobar, al rechazar una aprobada, al pasar de unidad y al dar el alta.
  */
 
 const LIMITE_LISTADO = 50;
@@ -41,6 +43,8 @@ const camposSolicitud = {
   estado: true,
   fechaSolicitud: true,
   fechaAprobacion: true,
+  unidadOcupadaId: true,
+  fechaAlta: true,
 } satisfies Prisma.SolicitudTrasladoSelect;
 
 const camposEvaluacion = {
@@ -118,6 +122,8 @@ export async function obtenerSolicitudDelCentro(
       ...camposSolicitud,
       ...camposCentros,
       evaluacionTriaje: { select: camposEvaluacion },
+      // Regla 7: en qué unidad está internado el paciente (solo el tipo).
+      unidadOcupada: { select: { tipo: true } },
       asignacionesTripulacion: {
         select: {
           asignadaEn: true,
@@ -315,7 +321,8 @@ export async function aprobarSolicitud(params: {
     return await prisma.$transaction(async (tx) => {
       const cambio = await tx.solicitudTraslado.updateMany({
         where: { id: solicitudId, centroDestinoId, estado: "EVALUANDO" },
-        data: { estado: "APROBADA", fechaAprobacion: new Date() },
+        // La derivación recuerda qué cama reservó (regla 7).
+        data: { estado: "APROBADA", fechaAprobacion: new Date(), unidadOcupadaId: unidadId },
       });
       if (cambio.count === 0) return { resultado: "ESTADO_CAMBIO" as const };
 
@@ -341,7 +348,8 @@ export async function aprobarSolicitud(params: {
  * Pasa la solicitud a RECHAZADA y, si tenía cama reservada, la devuelve.
  *
  * Si hay que liberar cama lo decide `liberaCamaAlRechazar` (lib/reglas-solicitud.ts)
- * y llega acá como parámetro: esta función no decide, ejecuta.
+ * y llega acá como la unidad que la derivación tenía reservada (regla 7): esta
+ * función no decide, ejecuta.
  *
  * El cambio de estado es condicional al estado que leyó el handler: si en el
  * medio alguien la aprobó o la rechazó, no se toca nada y se devuelve null.
@@ -349,33 +357,23 @@ export async function aprobarSolicitud(params: {
 export async function rechazarSolicitud(params: {
   solicitudId: string;
   estadoLeido: EstadoSolicitud;
-  camaALiberar: { centroSaludId: string; tipo: TipoUnidad } | null;
+  unidadALiberarId: string | null;
 }) {
-  const { solicitudId, estadoLeido, camaALiberar } = params;
+  const { solicitudId, estadoLeido, unidadALiberarId } = params;
 
   return prisma.$transaction(async (tx) => {
     // Cerrada: el paciente ya se puede volver a derivar desde ese centro (regla 6).
     const cambio = await tx.solicitudTraslado.updateMany({
       where: { id: solicitudId, estado: estadoLeido },
-      data: { estado: "RECHAZADA", pacienteDniActivo: null },
+      data: { estado: "RECHAZADA", pacienteDniActivo: null, unidadOcupadaId: null },
     });
     if (cambio.count === 0) return null;
 
-    if (camaALiberar) {
-      // No hay @@unique([centroSaludId, tipo]): se devuelve a una sola unidad.
-      const unidad = await tx.unidadCuidados.findFirst({
-        where: {
-          centroSaludId: camaALiberar.centroSaludId,
-          tipo: camaALiberar.tipo,
-        },
-        select: { id: true },
+    if (unidadALiberarId) {
+      await tx.unidadCuidados.update({
+        where: { id: unidadALiberarId },
+        data: { camasDisponibles: { increment: 1 } },
       });
-      if (unidad) {
-        await tx.unidadCuidados.update({
-          where: { id: unidad.id },
-          data: { camasDisponibles: { increment: 1 } },
-        });
-      }
     }
 
     return tx.solicitudTraslado.findUnique({
@@ -426,4 +424,91 @@ export async function avanzarTraslado(params: {
       select: camposSolicitud,
     });
   });
+}
+
+/**
+ * Regla 7: el receptor da de alta al paciente internado. Todo o nada:
+ *  1. La derivación deja de ocupar la cama, condicional a que siga en la misma
+ *     unidad y sin alta. Si otro pedido ya le dio el alta (o lo pasó de unidad),
+ *     no pasa el `where` y se devuelve null: la cama no se libera dos veces.
+ *  2. La cama vuelve a quedar libre en esa unidad.
+ *  3. Queda "Alta del paciente" en la bitácora.
+ */
+export async function darDeAlta(params: { solicitudId: string; unidadOcupadaId: string }) {
+  const { solicitudId, unidadOcupadaId } = params;
+
+  return prisma.$transaction(async (tx) => {
+    const cambio = await tx.solicitudTraslado.updateMany({
+      where: { id: solicitudId, estado: "FINALIZADA", unidadOcupadaId, fechaAlta: null },
+      data: { unidadOcupadaId: null, fechaAlta: new Date() },
+    });
+    if (cambio.count === 0) return null;
+
+    await tx.unidadCuidados.update({
+      where: { id: unidadOcupadaId },
+      data: { camasDisponibles: { increment: 1 } },
+    });
+    await tx.registroBitacora.create({
+      data: { solicitudId, evento: "ALTA_DEL_PACIENTE" },
+    });
+
+    return tx.solicitudTraslado.findUnique({
+      where: { id: solicitudId },
+      select: camposSolicitud,
+    });
+  });
+}
+
+/** Se lanza adentro de la transacción solo para deshacerla. Nunca sale de acá. */
+class SinCamaAlCambiar extends Error {}
+
+export type ResultadoCambioDeUnidad =
+  | { resultado: "CAMBIADA" }
+  | { resultado: "ESTADO_CAMBIO" }
+  | { resultado: "SIN_CAMA" };
+
+/**
+ * Regla 7: el receptor pasa al paciente internado a otra unidad de su centro
+ * (por ejemplo, de UTI a sala común). Todo o nada, en una transacción:
+ *  1. La derivación pasa a ocupar la unidad nueva, condicional a que siga en la
+ *     anterior y sin alta → si no, ESTADO_CAMBIO.
+ *  2. Ocupa una cama de la nueva solo si queda alguna (`camasDisponibles > 0`);
+ *     si no queda, se deshace todo → SIN_CAMA ("Capacidad agotada").
+ *  3. Libera la cama de la anterior y deja el pase en la bitácora.
+ */
+export async function cambiarDeUnidad(params: {
+  solicitudId: string;
+  unidadActualId: string;
+  unidadNuevaId: string;
+  observaciones: string;
+}): Promise<ResultadoCambioDeUnidad> {
+  const { solicitudId, unidadActualId, unidadNuevaId, observaciones } = params;
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const cambio = await tx.solicitudTraslado.updateMany({
+        where: { id: solicitudId, estado: "FINALIZADA", unidadOcupadaId: unidadActualId, fechaAlta: null },
+        data: { unidadOcupadaId: unidadNuevaId },
+      });
+      if (cambio.count === 0) return { resultado: "ESTADO_CAMBIO" as const };
+
+      const ocupa = await tx.unidadCuidados.updateMany({
+        where: { id: unidadNuevaId, camasDisponibles: { gt: 0 } },
+        data: { camasDisponibles: { decrement: 1 } },
+      });
+      if (ocupa.count === 0) throw new SinCamaAlCambiar();
+
+      await tx.unidadCuidados.update({
+        where: { id: unidadActualId },
+        data: { camasDisponibles: { increment: 1 } },
+      });
+      await tx.registroBitacora.create({
+        data: { solicitudId, evento: "CAMBIO_DE_UNIDAD", observaciones },
+      });
+      return { resultado: "CAMBIADA" as const };
+    });
+  } catch (error) {
+    if (error instanceof SinCamaAlCambiar) return { resultado: "SIN_CAMA" };
+    throw error;
+  }
 }

@@ -3,6 +3,7 @@
 import type { NivelComplejidad } from "@prisma/client";
 import { useActionState } from "react";
 import { Campo } from "@/components/campo";
+import { CamposCamas } from "@/components/campos-camas";
 import { AccionesFormulario, ErrorDelFormulario } from "@/components/formulario";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -17,13 +18,17 @@ type Props = {
   textoPendiente: string;
   /** Al editar, los datos actuales del centro. Al dar de alta, vacío. */
   inicial?: { nombre: string; nivelComplejidad: NivelComplejidad; ubicacion: string };
+  /** En el alta se cargan también las camas libres de cada tipo (regla 7). */
+  conCamas?: boolean;
 };
 
 /**
- * Los datos de un centro de salud: lo usan el alta (/admin/centros/nuevo) y la
- * edición (/admin/centros/:id). Si la acción falla, vuelve a mostrar lo escrito.
+ * Los datos de un centro de salud: lo usan el alta (/admin/centros/nuevo), que
+ * suma las camas libres de cada tipo, y la edición (/admin/centros/:id), donde
+ * las camas van en su propio formulario. Si la acción falla, vuelve a mostrar lo
+ * escrito.
  */
-export function FormularioCentro({ accion, texto, textoPendiente, inicial }: Props) {
+export function FormularioCentro({ accion, texto, textoPendiente, inicial, conCamas = false }: Props) {
   const [estado, enviar, pendiente] = useActionState(accion, SIN_ENVIAR);
 
   return (
@@ -46,6 +51,9 @@ export function FormularioCentro({ accion, texto, textoPendiente, inicial }: Pro
         {(control) => (
           <NativeSelect
             {...control}
+            // React 19 reinicia el formulario después de la acción, y un <select> no
+            // toma el defaultValue nuevo: con la key se vuelve a montar con lo elegido.
+            key={estado.valores?.nivelComplejidad ?? inicial?.nivelComplejidad ?? ""}
             name="nivelComplejidad"
             required
             defaultValue={estado.valores?.nivelComplejidad ?? inicial?.nivelComplejidad ?? ""}
@@ -73,6 +81,8 @@ export function FormularioCentro({ accion, texto, textoPendiente, inicial }: Pro
           />
         )}
       </Campo>
+
+      {conCamas && <CamposCamas estado={estado} />}
 
       <AccionesFormulario
         pendiente={pendiente}

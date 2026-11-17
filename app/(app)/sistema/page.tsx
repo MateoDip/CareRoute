@@ -8,6 +8,7 @@ import {
   FiltroSolicitudes,
   type SolicitudEnLista,
 } from "@/components/filtro-solicitudes";
+import { CamposCamas } from "@/components/campos-camas";
 import { Cargando } from "@/components/cargando";
 import { FranjaTriaje, Marca } from "@/components/marca";
 import { SinDatos } from "@/components/sin-datos";
@@ -195,6 +196,14 @@ export default async function Sistema() {
             <option value="SALA_COMUN">Sala común</option>
           </NativeSelect>
         </div>
+      </Seccion>
+
+      <Seccion titulo="Camas por unidad">
+        <p className="text-sm text-muted-foreground">
+          Alta de un centro, corrección del receptor (/camas) y del admin. Uno por tipo de unidad.
+        </p>
+        <CamposCamas estado={{}} inicial={{ UTI: 3, UCO: 2, SALA_COMUN: 8 }} />
+        <CamposCamas estado={{ errores: { UTI: ["No puede haber menos de cero camas"] }, valores: { UTI: "-1" } }} />
       </Seccion>
 
       <Seccion titulo="Alertas">

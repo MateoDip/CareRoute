@@ -6,7 +6,7 @@ import type {
   ActualizarCentro,
   CrearCentro,
 } from "@/lib/schemas/centro-salud";
-import type { ActualizarUnidad } from "@/lib/schemas/unidad-cuidados";
+import type { ActualizarUnidad, CamasPorTipo } from "@/lib/schemas/unidad-cuidados";
 import type { CentroConUnidades } from "@/lib/scoring-hospitales";
 
 const LIMITE_LISTADO = 50;
@@ -78,8 +78,24 @@ export async function existeCentro(id: string): Promise<boolean> {
   return centro !== null;
 }
 
+/** Los cuatro tipos de unidad, en el orden en que se muestran. */
+const TIPOS_DE_UNIDAD = ["UTI", "UCO", "SALA_COMUN", "GUARDIA"] as const satisfies readonly TipoUnidad[];
+
+/**
+ * Alta del centro con una unidad por tipo y sus camas libres (regla 7). Todo en
+ * un solo `create`: o se crea el centro con sus unidades, o nada.
+ */
 export async function crearCentro(datos: CrearCentro) {
-  return prisma.centroSalud.create({ data: datos, select: camposCentro });
+  const { camas, ...centro } = datos;
+  return prisma.centroSalud.create({
+    data: {
+      ...centro,
+      unidadesCuidados: {
+        create: TIPOS_DE_UNIDAD.map((tipo) => ({ tipo, camasDisponibles: camas[tipo] })),
+      },
+    },
+    select: camposCentro,
+  });
 }
 
 /** null si no existe. */
@@ -233,4 +249,23 @@ export async function camasLibresPorTipo(): Promise<Record<TipoUnidad, number>> 
 /** Cuántos centros hay, para el resumen del ADMIN. */
 export async function contarCentros(): Promise<number> {
   return prisma.centroSalud.count();
+}
+
+/**
+ * Corrección a mano de las camas libres de un centro (HU05, regla 7): el
+ * receptor las de su centro, el admin las de cualquiera. Fija el número de cada
+ * tipo; si el centro no tenía unidad de ese tipo, la crea (upsert por el índice
+ * único centro + tipo). Todo o nada.
+ */
+export async function fijarCamasDelCentro(centroSaludId: string, camas: CamasPorTipo) {
+  return prisma.$transaction(
+    TIPOS_DE_UNIDAD.map((tipo) =>
+      prisma.unidadCuidados.upsert({
+        where: { centroSaludId_tipo: { centroSaludId, tipo } },
+        update: { camasDisponibles: camas[tipo] },
+        create: { centroSaludId, tipo, camasDisponibles: camas[tipo] },
+        select: camposUnidad,
+      }),
+    ),
+  );
 }

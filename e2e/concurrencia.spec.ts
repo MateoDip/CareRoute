@@ -21,6 +21,7 @@ import { sesionDe, URL_APP } from "./sesiones";
  */
 
 let derivante: APIRequestContext;
+let receptor: APIRequestContext;
 let base: PrismaClient;
 
 test.beforeAll(async ({ playwright }) => {
@@ -28,11 +29,16 @@ test.beforeAll(async ({ playwright }) => {
     baseURL: URL_APP,
     storageState: sesionDe("derivante"),
   });
+  receptor = await playwright.request.newContext({
+    baseURL: URL_APP,
+    storageState: sesionDe("receptor"),
+  });
   base = baseDePruebas();
 });
 
 test.afterAll(async () => {
   await derivante.dispose();
+  await receptor.dispose();
   await base.$disconnect();
 });
 
@@ -119,3 +125,47 @@ test("en pantalla: un segundo intento para el mismo paciente avisa y lleva a la 
   await expect(pagina.getByRole("heading", { level: 1, name: "DNI 99.000.010" })).toBeVisible();
   await contexto.close();
 });
+
+/**
+ * Regla 7: el alta libera la cama del paciente una sola vez. Diez altas
+ * simultáneas (un doble toque, dos pestañas, un reintento) tienen que devolver
+ * una sola cama: la condición va dentro del `updateMany`, no en un `if`.
+ */
+test("diez altas simultáneas del mismo paciente: se libera una sola cama", async () => {
+  // El paciente llega internado a la UTI del Centenario, todo a través de la app.
+  const creada = await derivante.post("/api/solicitudes", { data: { pacienteDni: "40999001" } });
+  expect(creada.status()).toBe(201);
+  const { id } = (await creada.json()) as { id: string };
+  const pasos = [
+    () => derivante.post(`/api/solicitudes/${id}/evaluacion`, {
+      data: { frecuenciaCardiaca: 130, presionSistolica: 80, presionDiastolica: 50, nivelUrgenciaSugerido: "CRITICO" },
+    }),
+    () => derivante.post(`/api/solicitudes/${id}/destino`, { data: { centroDestinoId: "centro-destino-1" } }),
+    () => receptor.post(`/api/solicitudes/${id}/aprobacion`),
+    () => derivante.post(`/api/solicitudes/${id}/inicio`),
+    () => receptor.post(`/api/solicitudes/${id}/finalizacion`),
+  ];
+  for (const paso of pasos) expect((await paso()).status()).toBeLessThan(300);
+
+  const camasAntes = await camasDeUti();
+
+  const respuestas = await Promise.all(
+    Array.from({ length: 10 }, () => receptor.post(`/api/solicitudes/${id}/alta`)),
+  );
+  const status = respuestas.map((respuesta) => respuesta.status());
+
+  // Lo que importa primero: volvió una sola cama.
+  expect(await camasDeUti()).toBe(camasAntes + 1);
+  // Y el resto se rechazó como regla (409), nunca como error del servidor (500).
+  expect(status.filter((codigo) => codigo === 200)).toHaveLength(1);
+  expect(status.filter((codigo) => codigo === 409)).toHaveLength(9);
+});
+
+/** Camas libres de la UTI del Centenario, leídas en la base (solo lectura). */
+async function camasDeUti(): Promise<number> {
+  const unidad = await base.unidadCuidados.findUniqueOrThrow({
+    where: { id: "unidad-destino-uti" },
+    select: { camasDisponibles: true },
+  });
+  return unidad.camasDisponibles;
+}

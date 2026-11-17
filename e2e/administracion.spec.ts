@@ -9,7 +9,8 @@ import { sesionDe, USUARIOS } from "./sesiones";
  *  - Regla 4: quien entra con Google queda sin centro y no puede operar hasta
  *    que el admin le asigna uno. Un admin no puede quitarse su propio rol.
  *  - Regla 5: no se da de baja un centro con usuarios o derivaciones.
- *  - CentroSalud tiene CRUD completo a cargo del admin (spec §2).
+ *  - CentroSalud tiene CRUD completo a cargo del admin (spec §2), y al crearlo
+ *    se cargan sus camas libres de cada tipo (regla 7).
  *
  * Todo se escribe a través de la app. El centro que se crea se borra al final,
  * así no aparece en el ranking de las otras pruebas.
@@ -67,7 +68,7 @@ test("panel del admin: asigna centro a una médica nueva y administra los centro
     );
   });
 
-  await test.step("6. da de alta un centro, y sin nombre no avanza", async () => {
+  await test.step("6. da de alta un centro con sus camas, y sin nombre no avanza", async () => {
     await admin.getByRole("navigation", { name: "Administración" }).getByRole("link", { name: "Centros" }).click();
     await admin.getByRole("link", { name: "Nuevo centro" }).first().click();
 
@@ -77,10 +78,19 @@ test("panel del admin: asigna centro a una médica nueva y administra los centro
     await admin.getByLabel("Nombre").fill(CENTRO_NUEVO);
     await admin.getByLabel("Nivel de complejidad").selectOption({ label: "Media" });
     await admin.getByLabel("Ubicación").fill("Calle de Prueba 123, Rosario");
+    // Regla 7: al crear el centro se cargan sus camas libres de cada tipo, y no negativas.
+    await admin.getByLabel("UTI").fill("-1");
+    await admin.getByRole("button", { name: "Crear centro" }).click();
+    await expect(admin.getByText("No puede haber menos de cero camas")).toBeVisible();
+    await expect(admin.getByLabel("Nombre")).toHaveValue(CENTRO_NUEVO);
+
+    await admin.getByLabel("UTI").fill("2");
+    await admin.getByLabel("Sala común").fill("5");
     await admin.getByRole("button", { name: "Crear centro" }).click();
 
     await expect(admin.getByRole("heading", { level: 1, name: "Centros de salud" })).toBeVisible();
     await expect(admin.getByRole("link", { name: CENTRO_NUEVO, exact: true })).toBeVisible();
+    await expect(admin.getByText("UTI: 2 libres · UCO: 0 libres · Sala común: 5 libres · Guardia: 0 libres")).toBeVisible();
   });
 
   await test.step("7. lo edita", async () => {

@@ -94,6 +94,9 @@ export type SignosVitales = z.infer<typeof signosVitalesSchema>;
   guarda. El P2002 de Prisma se captura en `lib/db/` y sale como 409 con el mismo mensaje
   que el caso de la regla: nunca como 500. Un `setTimeout` o un `if` más no arreglan una
   carrera.
+- Regla 7 (la cama sigue al paciente): `unidadOcupadaId` cambia siempre en la misma transacción
+  que el contador de camas de esa unidad (aprobar, rechazar una aprobada, pase de unidad, alta).
+  Lo escribe solo `lib/db/solicitudes.ts` (ADR 0012).
 - Regla 6 (una derivación abierta por paciente y centro): `pacienteDniActivo` lleva el DNI
   mientras la solicitud está abierta y `null` cuando se cierra. Lo escribe solo
   `lib/db/solicitudes.ts`. Una transición nueva a `RECHAZADA` o `FINALIZADA` lo pone en `null`
@@ -197,9 +200,10 @@ app/
     error.tsx, not-found.tsx       error y 404 de las pantallas con sesión
     solicitudes/nueva/             iniciar una solicitud: page + acciones + formulario (HU01)
     solicitudes/[id]/              ficha (page + loading) + acciones aprobar / rechazar /
-                                   iniciar y finalizar traslado
+                                   iniciar y finalizar traslado / pase de unidad / alta
     solicitudes/[id]/triaje/       triaje con la IA o nivel a mano (HU02)
     solicitudes/[id]/destino/      ranking y elección del destino (HU03, HU04)
+    camas/                         el receptor corrige las camas de su centro (HU05)
     sistema/page.tsx               galería del sistema visual
   (admin)/admin/                   panel del ADMIN (requerirAdminEnPagina; un médico ve 404)
     page.tsx                       resumen: quién espera centro, totales y camas libres
@@ -233,7 +237,8 @@ lib/
   servicios/                       servicios externos
   formato.ts                       fechas en hora argentina y etiquetas para pantalla
   supabase-server.ts               cliente de Supabase Auth (solo servidor)
-  reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas puras (+ .test.ts)
+  reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas puras (+ .test.ts);
+                                   reglas-internacion.ts: alta y pase de unidad (regla 7)
 prisma/
   schema.prisma, migrations/, seed.ts
 e2e/                               pruebas de punta a punta (Playwright, §7)

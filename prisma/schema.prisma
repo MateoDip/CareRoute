@@ -80,6 +80,10 @@ enum EventoBitacora {
   PACIENTE_A_BORDO
   LLEGADA_DESTINO
   COMPLICACION_CLINICA
+  /// El receptor pasó al paciente internado a otra unidad (ej. de UTI a sala común).
+  CAMBIO_DE_UNIDAD
+  /// El receptor dio de alta al paciente: su cama vuelve a quedar libre.
+  ALTA_DEL_PACIENTE
 }
 
 // ==========================================
@@ -129,9 +133,14 @@ model UnidadCuidados {
   centroSaludId String
   centroSalud   CentroSalud @relation(fields: [centroSaludId], references: [id], onDelete: Cascade)
 
+  /// Derivaciones cuyo paciente ocupa hoy una cama de esta unidad.
+  solicitudesInternadas SolicitudTraslado[]
+
   creadaEn      DateTime @default(now())
   actualizadaEn DateTime @updatedAt
 
+  /// Una unidad por tipo en cada centro: "las camas de UTI del HECA" es un solo número.
+  @@unique([centroSaludId, tipo])
   @@index([centroSaludId])
 }
 
@@ -152,18 +161,25 @@ model RecursoEspecializado {
 
 /// `fechaSolicitud` cumple el papel de `creadaEn`: es el momento en que la fila nace.
 model SolicitudTraslado {
-  id              String          @id @default(cuid())
-  pacienteDni     String
+  id                String          @id @default(cuid())
+  pacienteDni       String
   /// Regla 6 (spec §6, clase 14): copia de `pacienteDni` mientras la derivación
   /// está abierta (PENDIENTE, EVALUANDO, APROBADA, EN_CURSO) y null cuando se
   /// cierra (RECHAZADA, FINALIZADA). Con el @@unique de abajo, la base acepta una
   /// sola derivación abierta por paciente y centro de origen: Postgres no compara
   /// los null, así que las cerradas no chocan. Lo escribe solo lib/db/solicitudes.ts.
   pacienteDniActivo String?
-  estado          EstadoSolicitud @default(PENDIENTE)
-  fechaSolicitud  DateTime        @default(now())
+  estado            EstadoSolicitud @default(PENDIENTE)
+  fechaSolicitud    DateTime        @default(now())
   /// H3: "se registra la fecha y hora de la decisión". Null hasta que se aprueba.
-  fechaAprobacion DateTime?
+  fechaAprobacion   DateTime?
+  /// Regla 7 (spec §6): la cama que el paciente ocupa en el destino. Se reserva al
+  /// aprobar, cambia con un pase de unidad y vuelve a null al rechazar o al dar el
+  /// alta. Lo escribe solo lib/db/solicitudes.ts, junto con el contador de camas.
+  unidadOcupadaId   String?
+  unidadOcupada     UnidadCuidados? @relation(fields: [unidadOcupadaId], references: [id], onDelete: Restrict)
+  /// Cuándo el receptor dio de alta al paciente. Null mientras sigue internado.
+  fechaAlta         DateTime?
 
   centroOrigenId  String
   centroOrigen    CentroSalud  @relation("CentroOrigen", fields: [centroOrigenId], references: [id], onDelete: Restrict)
@@ -180,6 +196,7 @@ model SolicitudTraslado {
   @@unique([centroOrigenId, pacienteDniActivo])
   @@index([centroOrigenId])
   @@index([centroDestinoId])
+  @@index([unidadOcupadaId])
 }
 
 model EvaluacionTriaje {

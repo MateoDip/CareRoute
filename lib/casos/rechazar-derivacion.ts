@@ -9,7 +9,6 @@ import {
   rolesQuePuedenRechazar,
   transicionesPosibles,
 } from "@/lib/reglas-solicitud";
-import { unidadRequerida } from "@/lib/scoring-hospitales";
 import { exito, rechazo, type Resultado } from "./resultado";
 
 type SolicitudRechazada = NonNullable<
@@ -59,20 +58,15 @@ export async function rechazarDerivacion(
     );
   }
 
-  const camaALiberar =
-    liberaCamaAlRechazar(solicitud.estado) &&
-    solicitud.centroDestinoId &&
-    solicitud.evaluacionTriaje
-      ? {
-          centroSaludId: solicitud.centroDestinoId,
-          tipo: unidadRequerida(solicitud.evaluacionTriaje.nivelUrgenciaSugerido),
-        }
-      : null;
+  // Una APROBADA tenía cama reservada: vuelve a quedar libre (regla 3 y 7).
+  const unidadALiberarId = liberaCamaAlRechazar(solicitud.estado)
+    ? solicitud.unidadOcupadaId
+    : null;
 
   const rechazada = await rechazarSolicitud({
     solicitudId,
     estadoLeido: solicitud.estado,
-    camaALiberar,
+    unidadALiberarId,
   });
   if (!rechazada) {
     return rechazo(

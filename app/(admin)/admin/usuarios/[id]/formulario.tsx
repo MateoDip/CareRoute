@@ -37,7 +37,13 @@ export function FormularioAsignarUsuario({ accion, centros, rolActual, centroAct
         errores={estado.errores?.rol}
       >
         {(control) => (
-          <NativeSelect {...control} name="rol" defaultValue={estado.valores?.rol ?? rolActual}>
+          // key: React 19 reinicia el formulario y un <select> no toma el defaultValue nuevo.
+          <NativeSelect
+            {...control}
+            key={estado.valores?.rol ?? rolActual}
+            name="rol"
+            defaultValue={estado.valores?.rol ?? rolActual}
+          >
             {ROLES.map((rol) => (
               <option key={rol} value={rol}>
                 {ETIQUETA_ROL[rol]}
@@ -55,6 +61,7 @@ export function FormularioAsignarUsuario({ accion, centros, rolActual, centroAct
         {(control) => (
           <NativeSelect
             {...control}
+            key={estado.valores?.centroSaludId ?? centroActual}
             name="centroSaludId"
             defaultValue={estado.valores?.centroSaludId ?? centroActual}
           >
