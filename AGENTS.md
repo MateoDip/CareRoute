@@ -220,6 +220,10 @@ components/
   ui/                              base de shadcn/ui: Button, Card, Badge, Input, NativeSelect,
                                    Skeleton, Alert (no importan el dominio)
   navegacion.tsx, sin-datos.tsx, estado-solicitud.tsx   componentes de dominio
+  navegacion-admin.tsx             barra del panel del admin
+  marca.tsx                        logo (tokens marca-*) y franja del triaje
+  cargando.tsx, indicador-navegando.tsx   aviso "Cargando…" con relojito (loading.tsx y enlaces)
+  campos-camas.tsx, formulario-camas.tsx  camas por tipo de unidad (regla 7, HU05)
   campo.tsx                        etiqueta + control + ayuda + error conectados (useId)
   formulario.tsx                   error arriba del formulario y botones Guardar / Cancelar
   boton-accion.tsx                 operación sin campos (aprobar, rechazar), con confirmación
@@ -288,6 +292,7 @@ archivo es una guía.
 | Dominio | ¿La regla calcula bien? | `lib/*.test.ts` | Vitest, sin base, red ni navegador |
 | Permisos | ¿El servidor rechaza cuando corresponde, aunque no se pase por la pantalla? | `e2e/permisos.spec.ts` | Playwright contra la API |
 | Flujo | ¿Se recorre el sistema completo, de una persona a otra? | `e2e/flujo-principal.spec.ts` | Playwright con navegador |
+| Panel del admin | ¿El admin habilita a un médico nuevo y administra los centros? | `e2e/administracion.spec.ts` | Playwright con navegador |
 | Concurrencia | ¿Una regla de "uno solo" aguanta pedidos simultáneos? | `e2e/concurrencia.spec.ts` | Playwright + conteo en la base |
 
 | Si cambia… | Se actualiza… |

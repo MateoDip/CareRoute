@@ -38,7 +38,7 @@ trazabilidad del paciente durante el traslado.
 | Rol | Qué hace |
 |---|---|
 | **Médico derivante** | Crea la solicitud, registra el triaje (con sugerencia de IA), ve el ranking y elige el hospital de destino. |
-| **Médico receptor** | Actualiza las camas de su centro, ve las derivaciones que le propusieron y las aprueba o rechaza. |
+| **Médico receptor** | Ve las derivaciones que le propusieron y las aprueba o rechaza; marca la llegada del paciente, lo pasa de unidad y le da el alta; corrige las camas de su centro (`/camas`). |
 | **Admin** | Desde su panel (`/admin`): da de alta, edita y da de baja centros, y asigna rol y centro a cada usuario. No participa del flujo clínico ni ve datos de pacientes. |
 
 Quien entra por primera vez con Google queda como médico derivante **sin centro**: no puede
@@ -58,6 +58,9 @@ sí mismo. La matriz de permisos completa está en [`docs/api.md`](./docs/api.md
 6. HU07  El derivante marca la salida del paciente      → EN_CURSO
    HU07  El receptor marca la llegada                   → FINALIZADA
          (cada paso queda en la bitácora)
+7. Regla 7  Queda internado en la cama reservada: el receptor
+         lo pasa de unidad (ej. UTI → sala común) y le da el
+         alta, que libera la cama
 
 Antes de EN_CURSO se puede RECHAZAR; una APROBADA solo la rechaza el receptor.
 ```
@@ -82,11 +85,12 @@ de borrado: [`docs/spec.md`](./docs/spec.md) §3.
 ```mermaid
 erDiagram
     CENTRO_SALUD ||--o{ USUARIO : "emplea"
-    CENTRO_SALUD ||--o{ UNIDAD_CUIDADOS : "tiene"
+    CENTRO_SALUD ||--o{ UNIDAD_CUIDADOS : "tiene (una por tipo)"
     CENTRO_SALUD ||--o{ RECURSO_ESPECIALIZADO : "tiene"
     CENTRO_SALUD ||--o{ SOLICITUD_TRASLADO : "es origen de"
     CENTRO_SALUD |o--o{ SOLICITUD_TRASLADO : "es destino de"
     SOLICITUD_TRASLADO ||--o| EVALUACION_TRIAJE : "tiene"
+    UNIDAD_CUIDADOS |o--o{ SOLICITUD_TRASLADO : "aloja al paciente de"
     SOLICITUD_TRASLADO ||--o{ ASIGNACION_TRIPULACION : "tiene"
     TRIPULACION_MEDICA ||--o{ ASIGNACION_TRIPULACION : "cubre"
     SOLICITUD_TRASLADO ||--o{ REGISTRO_BITACORA : "registra"
@@ -97,7 +101,10 @@ erDiagram
   (una tripulación hace muchos traslados; un traslado largo puede tener relevo).
 - **No hay entidad `Paciente`:** el DNI vive en la solicitud, porque los datos clínicos son
   del episodio, no de la persona.
-- **CRUD completo:** `CentroSalud`, a cargo del admin.
+- **CRUD completo:** `CentroSalud`, a cargo del admin, con sus camas libres de cada tipo.
+- **La cama sigue al paciente** (regla 7, ADR 0012): `SolicitudTraslado.unidadOcupadaId` es la
+  cama que el paciente tiene reservada u ocupa en el destino; cambia con el pase de unidad y
+  vuelve a null con el alta (`fechaAlta`), siempre junto con el contador de camas.
 
 ## 6. API
 
@@ -141,7 +148,7 @@ sesión, nunca del body, de un header ni de la query.
 | IA | OpenAI `gpt-4o-mini` — `lib/servicios/openai.ts` |
 | Tests | Vitest (reglas de dominio) y Playwright (flujo, permisos y concurrencia) |
 | Tipografía | Atkinson Hyperlegible Next, servida desde el repo (`app/fuentes/`, licencia OFL) |
-| Deploy | Vercel |
+| Deploy | Vercel, con las funciones en São Paulo (`gru1`, `vercel.json`), al lado de Supabase |
 | CI | GitHub Actions: `verificar` (tipos, lint, unitarias) y `e2e` (Playwright con Postgres) en cada Pull Request |
 
 ### Estructura
@@ -149,13 +156,17 @@ sesión, nunca del body, de un header ni de la query.
 ```
 app/
   globals.css          tokens del sistema visual (colores, radios)
-  (app)/               pantallas con sesión: listado (/), ficha (/solicitudes/:id), galería (/sistema)
+  icon.svg             favicon: el logo de CareRoute
+  (app)/               pantallas de los médicos: listado (/), ficha (/solicitudes/:id),
+                       camas del centro (/camas, receptor), galería (/sistema)
+  (admin)/admin/       panel del admin: resumen, usuarios y centros (con sus camas)
   (public)/            pantallas sin sesión: /ingresar, /sin-acceso
   api/                 route handlers (JSON)
   auth/callback/       vuelta del login con Google
 components/
   ui/                  base de shadcn/ui (Button, Card, Badge, Input, Skeleton, Alert…)
-  *.tsx                componentes de dominio (barra, estado vacío, badges de estado, filtro)
+  *.tsx                componentes de dominio (logo, barras, estado vacío, badges de estado,
+                       filtro, aviso de carga con relojito, campos de camas)
 lib/
   auth.ts              quién hace el request (sesión, rol, centro)
   formato.ts           fechas en hora argentina y etiquetas para pantalla
@@ -164,8 +175,10 @@ lib/
   db/                  consultas Prisma (único lugar que importa Prisma)
   schemas/             schemas de Zod
   servicios/           servicios externos (OpenAI)
+  casos/               casos de uso: cada regla escrita una sola vez, para la API y las pantallas
   reglas-*.ts, disponibilidad.ts, scoring-hospitales.ts   reglas de negocio puras + tests
-e2e/                   pruebas de punta a punta (Playwright): flujo, permisos, concurrencia
+e2e/                   pruebas de punta a punta (Playwright): flujo, panel del admin, permisos,
+                       concurrencia
 scripts/               contraste de colores, carga de datos y demos de la clase 14
 prisma/
   schema.prisma        modelo de dominio
@@ -230,6 +243,7 @@ Tres capas (clase 13). Qué se prueba y por qué, en [AGENTS.md §7](./AGENTS.md
 | Dominio | ¿La regla calcula bien? | `lib/*.test.ts` | `npm test` (Vitest, sin base ni red) |
 | Permisos | ¿El servidor rechaza cuando corresponde? | `e2e/permisos.spec.ts` | `npm run test:e2e -- permisos` |
 | Flujo | ¿Se recorre el sistema completo, de una persona a otra? | `e2e/flujo-principal.spec.ts` | `npm run test:e2e -- flujo` |
+| Panel del admin | ¿El admin habilita a un médico nuevo y administra los centros? | `e2e/administracion.spec.ts` | `npm run test:e2e -- administracion` |
 | Concurrencia | ¿La regla de "uno solo" aguanta pedidos simultáneos? | `e2e/concurrencia.spec.ts` | `npm run test:e2e -- concurrencia` |
 
 Las e2e corren **siempre contra un Postgres local**, nunca contra Supabase:
